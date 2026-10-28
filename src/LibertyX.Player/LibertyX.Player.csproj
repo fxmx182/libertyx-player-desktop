@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>LibertyXPlayer</AssemblyName>
+    <RootNamespace>LibertyX.Player</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- só Linux: as APIs de arquivo Unix são usadas sem guarda de plataforma -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <SatelliteResourceLanguages>pt-BR;es</SatelliteResourceLanguages>
+    <!-- o commit vai no rodapé de Ajustes › Sobre: sem ele não dá para saber qual build está instalado -->
+    <SourceRevisionId Condition="'$(LibertyxCommit)' != ''">$(LibertyxCommit)</SourceRevisionId>
+  </PropertyGroup>
+  <!-- build desta máquina = o do dono, com o Pro liberado (como o dist/ do Android); CI = travado -->
+  <PropertyGroup Condition="'$(CI)' == '' And '$(LibertyxLoja)' != 'true'">
+    <DefineConstants>$(DefineConstants);LIBERADO</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="SMBLibrary" Version="1.5.4" />
+  </ItemGroup>
+  <!-- a ICU (idiomas, datas, números) vai dentro do app — sem ela o .NET não abre em distribuições
+       que não trazem a libicu, e cada uma traz uma versão diferente (o mesmo do Partition) -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+    <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
+    <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="72.1.0.3" />
+  </ItemGroup>
+</Project>

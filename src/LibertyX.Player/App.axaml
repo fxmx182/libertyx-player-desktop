@@ -1,0 +1,204 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="LibertyX.Player.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <!-- A linguagem da família LibertyX: ouro sobre preto quente, vidro, Manrope. -->
+    <FontFamily x:Key="Manrope">avares://LibertyXPlayer/Assets/Fonts#Manrope</FontFamily>
+    <SolidColorBrush x:Key="Ouro" Color="#FBC501" />
+    <SolidColorBrush x:Key="OuroClaro" Color="#FFE08A" />
+    <SolidColorBrush x:Key="OuroSuave" Color="#26FBC501" />
+    <SolidColorBrush x:Key="OuroBorda" Color="#66FBC501" />
+    <SolidColorBrush x:Key="SobreOuro" Color="#1A1200" />
+    <SolidColorBrush x:Key="Fundo" Color="#0C0B0A" />
+    <SolidColorBrush x:Key="Superficie" Color="#16151A" />
+    <SolidColorBrush x:Key="Superficie2" Color="#1E1D22" />
+    <SolidColorBrush x:Key="Vidro" Color="#0EFFFFFF" />
+    <SolidColorBrush x:Key="VidroForte" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="VidroBorda" Color="#1CFFFFFF" />
+    <SolidColorBrush x:Key="Texto" Color="#F0FFFFFF" />
+    <SolidColorBrush x:Key="Apagado" Color="#99EBEBF5" />
+    <SolidColorBrush x:Key="Tenue" Color="#61EBEBF5" />
+    <SolidColorBrush x:Key="Vermelho" Color="#FF5A5A" />
+    <LinearGradientBrush x:Key="OuroBotao" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#FFD84A" />
+      <GradientStop Offset="1" Color="#E9A800" />
+    </LinearGradientBrush>
+    <!-- o Fluent escuro com o ouro no lugar do azul -->
+    <Color x:Key="SystemAccentColor">#FBC501</Color>
+    <Color x:Key="SystemAccentColorLight1">#FFD84A</Color>
+    <Color x:Key="SystemAccentColorLight2">#FFE08A</Color>
+    <Color x:Key="SystemAccentColorDark1">#E9A800</Color>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector=":is(TemplatedControl)">
+      <Setter Property="FontFamily" Value="{StaticResource Manrope}" />
+    </Style>
+    <Style Selector="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource Manrope}" />
+    </Style>
+    <Style Selector="TextBlock.titulo">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="ExtraBold" />
+    </Style>
+    <Style Selector="TextBlock.secao">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="TextBlock.apagado">
+      <Setter Property="Foreground" Value="{StaticResource Apagado}" />
+    </Style>
+    <Style Selector="TextBlock.tenue">
+      <Setter Property="Foreground" Value="{StaticResource Tenue}" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- botões -->
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.ouro">
+      <Setter Property="Background" Value="{StaticResource OuroBotao}" />
+      <Setter Property="Foreground" Value="{StaticResource SobreOuro}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.ouro:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FFE070" />
+      <Setter Property="Foreground" Value="{StaticResource SobreOuro}" />
+    </Style>
+    <Style Selector="Button.ouro:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#E9A800" />
+    </Style>
+    <Style Selector="Button.vidro">
+      <Setter Property="Background" Value="{StaticResource Vidro}" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="{StaticResource Texto}" />
+    </Style>
+    <Style Selector="Button.vidro:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource VidroForte}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OuroBorda}" />
+    </Style>
+    <Style Selector="Button.plano">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource Texto}" />
+    </Style>
+    <Style Selector="Button.plano:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource VidroForte}" />
+    </Style>
+    <Style Selector="Button.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource Apagado}" />
+      <Setter Property="Padding" Value="14,9" />
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Vidro}" />
+      <Setter Property="Foreground" Value="{StaticResource Texto}" />
+    </Style>
+    <Style Selector="Button.nav.ativo">
+      <Setter Property="Background" Value="{StaticResource OuroSuave}" />
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Button.nav.ativo:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource OuroSuave}" />
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <!-- os do player: redondos, sem fundo, sobre o vídeo -->
+    <Style Selector="Button.player">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="CornerRadius" Value="22" />
+      <Setter Property="Padding" Value="9" />
+    </Style>
+    <Style Selector="Button.player:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#26FFFFFF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.player.aceso">
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Button.player.aceso:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Button.playgrande">
+      <Setter Property="Background" Value="{StaticResource Ouro}" />
+      <Setter Property="Foreground" Value="{StaticResource SobreOuro}" />
+      <Setter Property="CornerRadius" Value="26" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.playgrande:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FFE070" />
+      <Setter Property="Foreground" Value="{StaticResource SobreOuro}" />
+    </Style>
+    <!-- itens de lista do menu do player -->
+    <Style Selector="Button.item">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{StaticResource Texto}" />
+    </Style>
+    <Style Selector="Button.item:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource VidroForte}" />
+      <Setter Property="Foreground" Value="{StaticResource Texto}" />
+    </Style>
+    <Style Selector="Button.item.marcado">
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Button.item.marcado:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <!-- cartões clicáveis (vídeo, pasta) -->
+    <Style Selector="Button.cartao">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.cartao:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Vidro}" />
+    </Style>
+    <Style Selector="Button.cartao:pointerover Border.capa">
+      <Setter Property="BorderBrush" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Border.capa">
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="{StaticResource Superficie2}" />
+    </Style>
+    <Style Selector="Border.painel">
+      <Setter Property="Background" Value="{StaticResource Superficie}" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style Selector="Border.vidroplayer">
+      <Setter Property="Background" Value="#E6141317" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="16" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style Selector="ScrollViewer">
+      <Setter Property="AllowAutoHide" Value="True" />
+    </Style>
+  </Application.Styles>
+</Application>

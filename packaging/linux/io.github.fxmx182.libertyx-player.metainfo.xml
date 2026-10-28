@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.fxmx182.libertyx-player</id>
+  <name>LibertyX Player</name>
+  <summary>Your videos and your home server, with frame-accurate seeking</summary>
+  <summary xml:lang="pt-BR">Seus vídeos e o servidor de casa, com rolagem quadro a quadro</summary>
+  <summary xml:lang="es">Tus videos y el servidor de casa, con búsqueda fotograma a fotograma</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="io.github.fxmx182"><name>LibertyX</name></developer>
+  <description>
+    <p>The LibertyX Player from Android and iPhone, on the desktop: a library of your video folders with covers and "continue watching", a player with frame-accurate seeking by dragging the video, subtitles and audio tracks, and network folders (SMB) played straight from your PC or NAS without copying.</p>
+    <p xml:lang="pt-BR">O LibertyX Player do Android e do iPhone, no desktop: biblioteca das pastas de vídeo com capas e "continuar assistindo", player com rolagem quadro a quadro arrastando o vídeo, legendas e faixas de áudio, e pastas da rede (SMB) tocadas direto do PC ou do NAS, sem copiar.</p>
+  </description>
+  <launchable type="desktop-id">libertyx-player.desktop</launchable>
+  <url type="homepage">https://fxmx182.github.io/#/player</url>
+  <categories><category>AudioVideo</category><category>Video</category></categories>
+  <content_rating type="oars-1.1" />
+  <requires><control>pointing</control></requires>
+</component>

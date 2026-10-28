@@ -1,0 +1,136 @@
+name: LibertyX Player (Linux)
+
+# Cada arquitetura compila no próprio runner (x64 e ARM64 são grátis em repositório público),
+# roda o autoteste sem tela (libmpv do sistema, um vídeo gerado na hora, quadro desenhado na
+# memória), empacota, prova que o .deb e o .rpm instalam e abrem, e publica um release novo a
+# cada push — marcado latest, para o link /releases/latest/download/<arquivo> nunca mudar.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: player-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compilar, testar e empacotar (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: libmpv, ffmpeg (vídeo de teste) e rpm
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libmpv2 ffmpeg rpm >/dev/null
+
+      - name: Publicar o executável
+        run: |
+          dotnet publish src/LibertyX.Player/LibertyX.Player.csproj -c Release -r linux-${{ matrix.arch }} --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=none -p:LibertyxCommit=${GITHUB_SHA::7} -p:Version=1.0.${{ github.run_number }} -o dist 2>&1 | tee build.log
+          if [ ! -x dist/LibertyXPlayer ]; then
+            errs=$(grep ' error ' build.log | sort -u | head -20 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+            echo "::error title=Erros de compilação::$errs"
+            exit 1
+          fi
+          ls -la dist
+
+      - name: Traduções completas
+        run: python3 Scripts/textos.py
+
+      # Cada FALHA vira anotação (as anotações de repositório público qualquer um lê).
+      - name: Autoteste
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=640x360:rate=25 -f lavfi -i sine=frequency=440 -t 6 \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -y teste.mp4
+          set +e
+          ./dist/LibertyXPlayer --autoteste autoteste.txt teste.mp4
+          code=$?
+          set -e
+          grep '^FALHA' autoteste.txt | while read -r l; do echo "::error title=Autoteste ${{ matrix.arch }}::${l//%/%25}"; done || true
+          echo "::notice title=Autoteste ${{ matrix.arch }}::$(tail -n 1 autoteste.txt)"
+          exit $code
+
+      - name: Empacotar (.deb, .rpm, .tar.gz)
+        run: |
+          packaging/linux/empacotar.sh ${{ matrix.arch }} 1.0.${{ github.run_number }} dist/LibertyXPlayer pacotes
+          ls -la pacotes
+
+      - name: Instalar e remover o .deb (Ubuntu)
+        run: |
+          sudo apt-get install -y -qq ./pacotes/libertyx-player_*.deb >/dev/null
+          test -x /opt/libertyx-player/LibertyXPlayer
+          test -f /usr/share/applications/libertyx-player.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/libertyx-player.png
+          libertyx-player --autoteste /tmp/deb.txt teste.mp4 >/dev/null
+          echo "::notice title=.deb ${{ matrix.arch }}::instalou e abriu como /usr/bin/libertyx-player ($(tail -n 1 /tmp/deb.txt))"
+          sudo apt-get remove -y -qq libertyx-player >/dev/null
+          test ! -e /opt/libertyx-player/LibertyXPlayer
+
+      - name: Instalar o .rpm (Fedora) e o .tar.gz (Debian 12, libmpv mais antigo)
+        run: |
+          docker run --rm -v "$PWD:/w:ro" fedora:41 sh -c \
+            'dnf install -y -q /w/pacotes/*.rpm >/dev/null && libertyx-player --autoteste /tmp/r.txt /w/teste.mp4 | tail -n 1'
+          docker run --rm -v "$PWD:/w:ro" debian:bookworm-slim sh -c \
+            'apt-get update -qq >/dev/null && apt-get install -y -qq libmpv2 >/dev/null 2>&1; tar -xzf /w/pacotes/LibertyXPlayer-linux*.tar.gz -C /tmp && /tmp/libertyx-player/LibertyXPlayer --autoteste /tmp/r.txt /w/teste.mp4 | tail -n 1'
+
+      - name: Guardar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            pacotes/
+            autoteste.txt
+          retention-days: 30
+
+  release:
+    name: Publicar o release
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p up
+          cp art/linux-x64/pacotes/* art/linux-arm64/pacotes/* up/
+          (cd up && sha256sum * > SHA256SUMS)
+          ver=1.0.${{ github.run_number }}
+          sha=$(echo "${{ github.sha }}" | cut -c1-7)
+          tag="v${ver}-$(date -u +%Y%m%d)-${sha}"
+          msg=$(git log -1 --pretty=%s | cut -c1-300)
+          printf 'versao=%s\ncommit=%s\n' "$ver" "${{ github.sha }}" > up/versao.txt
+          notes="**${msg}**
+
+          | Distribuição | Baixar |
+          |---|---|
+          | Debian, Ubuntu, Mint, Pop!_OS | \`libertyx-player_amd64.deb\` (ARM: \`_arm64.deb\`) |
+          | Fedora, openSUSE | \`libertyx-player.x86_64.rpm\` (ARM: \`.aarch64.rpm\`) |
+          | Qualquer outra | \`LibertyXPlayer-linux.tar.gz\` + o libmpv da distribuição |"
+          gh release create "$tag" up/* --title "LibertyX Player $ver (Linux)" --notes "$notes" --latest
+          # poda: os 10 últimos bastam
+          gh release list --limit 100 --json tagName --jq '.[10:][].tagName' | while read -r t; do gh release delete "$t" --yes --cleanup-tag; done
