@@ -6,6 +6,7 @@
 
 **Linux:** [.deb (Debian, Ubuntu, Mint)](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/libertyx-player_amd64.deb)
 · [.rpm (Fedora, openSUSE)](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/libertyx-player.x86_64.rpm)
+· [AppImage (qualquer distribuição)](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/LibertyXPlayer-x86_64.AppImage)
 · [.tar.gz](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/LibertyXPlayer-linux.tar.gz)
 · [ARM64 e todos os arquivos](https://github.com/fxmx182/libertyx-player-desktop/releases/latest)
 
@@ -23,9 +24,18 @@ Os irmãos usam o libVLC. Aqui o motor é o **libmpv**, por duas razões que só
 | **Rolagem quadro a quadro** | `setTime` exato, mas lento em arquivo grande | `hr-seek` é o caso de uso principal do mpv; buscas acumuladas durante o arraste são fundidas |
 | **SMB** | tem `smb://`, mas a senha na URL é descartada (a armadilha do Android) | o app entrega os bytes pelo `stream_cb` do libmpv: `lxsmb://`, com o SMBLibrary (C# puro), sem senha no endereço |
 
-No Linux o libmpv é o **da distribuição** (dependência do .deb/.rpm): o app não leva FFmpeg nem mpv
-dentro. Isso deixa o pacote pequeno, recebe as correções de segurança do sistema e não redistribui
-código GPL junto com o app.
+No Linux o libmpv do .deb/.rpm/.tar.gz é o **da distribuição** (dependência do pacote): o app não
+leva FFmpeg nem mpv dentro. Isso deixa o pacote pequeno, recebe as correções de segurança do sistema
+e não redistribui código GPL junto com o app.
+
+O **AppImage** é para qualquer distribuição, sem instalar nada: leva um `libmpv.so.2` próprio, LGPL,
+compilado por `Scripts/libmpv-linux.sh` (o mesmo caminho do Windows: mpv `-Dgpl=false`, FFmpeg sem
+`--enable-gpl`, tudo estático e com os símbolos escondidos). É compilado num Ubuntu 22.04, então abre
+em glibc 2.35 ou mais nova (Ubuntu 22.04+, Debian 12+, Fedora 36+, Mint 21+). Do sistema só usa o que
+todo desktop tem: ALSA/PulseAudio (o PipeWire atende pelo cliente do Pulse), fontconfig e GnuTLS.
+Aceleração: NVDEC (abre o driver da NVIDIA se houver) e VAAPI (libva estático, drivers do sistema).
+Tem LuaJIT, então links de sites de vídeo abrem se o yt-dlp estiver instalado. Ao abrir, cria o
+atalho no menu (`~/.local/share/applications`) e se atualiza sozinho trocando o próprio arquivo.
 
 ## Windows e Linux no mesmo código
 
@@ -137,7 +147,8 @@ cd src/LibertyX.Player && dotnet build -r linux-x64 --no-self-contained
 ```
 
 `-r linux-x64` importa: sem ele a ICU embutida não entra e o app fecha em distribuição sem libicu.
-Precisa do `libmpv2` instalado para rodar.
+Precisa do `libmpv2` instalado para rodar (ou, sem ele, do libmpv do AppImage:
+`Scripts/libmpv-linux.sh` dentro de um `ubuntu:22.04`, ~15 min, e `APPDIR` apontando para ele).
 
 Windows, daqui mesmo do Linux:
 
@@ -150,8 +161,9 @@ wine dist/win-x64/LibertyXPlayer.exe --autoteste r.txt video.mp4
 
 - `LibertyXPlayer --autoteste relatorio.txt video.mp4`: sem tela; carrega o libmpv, abre o vídeo,
   desenha um quadro na memória e confere que não saiu preto, recusa chave falsa, confere os idiomas.
-  O CI roda no executável publicado, no .deb instalado (Ubuntu 24.04), no .rpm (Fedora 41) e no
-  .tar.gz (Debian 12, libmpv 0.35).
+  O CI roda no executável publicado, no .deb instalado (Ubuntu 24.04), no .rpm (Fedora 41), no
+  .tar.gz (Debian 12, libmpv 0.35) e no AppImage em Ubuntu 22.04 e Fedora 41 sem mpv nenhum (e
+  reprova se ele usar o libmpv do sistema em vez do de dentro).
 - `python3 Scripts/textos.py`: todo texto do código está nas tabelas de inglês e espanhol.
 - `LIBERTYX_LOG=1`: o diário do Avalonia no terminal e todo o log do mpv em
   `~/.cache/libertyx-player/diario.log` (`LIBERTYX_MPVLOG=v` para o detalhado).
@@ -183,10 +195,11 @@ src/LibertyX.Player/
   Rede/     Smb (servidores salvos, conexão SMBLibrary), Descoberta (avahi + porta 445)
   Core/     Prefs, Textos (+ Tabelas en/es), Pro/Chave, Biblioteca, Escala (só Linux), Win (só Windows), Diario
   Views/    MainWindow, BibliotecaView, PlayerView (+ BarraDeTempo), RedeView, AjustesView/ProDialogo
-packaging/linux/   .desktop, metainfo, empacotar.sh (.deb, .rpm, .tar.gz), ícones
+packaging/linux/   .desktop, metainfo, AppRun, empacotar.sh (.deb, .rpm, .tar.gz, AppImage), ícones
 packaging/windows/ LibertyXPlayer.iss (Inno Setup), app.ico, artes do instalador
 Scripts/   marca.py (símbolo e ícones a partir do vetor do Android), textos.py,
-           libmpv-windows.sh (libmpv-2.dll LGPL), instalador.py (ícone e artes do Windows)
+           libmpv-windows.sh (libmpv-2.dll LGPL), libmpv-linux.sh (libmpv.so.2 LGPL do AppImage),
+           instalador.py (ícone e artes do Windows)
 ```
 
 As telas são montadas em código (`Views/Ui.cs` tem os atalhos); o XAML é só o tema, em `App.axaml`.

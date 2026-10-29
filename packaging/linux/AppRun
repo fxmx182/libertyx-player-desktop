@@ -1,0 +1,5 @@
+#!/bin/sh
+# AppImage: o executável único em usr/bin; o libmpv próprio (LGPL) em usr/lib, achado pelo $APPDIR.
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="${APPDIR:-$HERE}"
+exec "$HERE/usr/bin/LibertyXPlayer" "$@"

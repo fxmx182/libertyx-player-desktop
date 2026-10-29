@@ -21,7 +21,9 @@ public static class Autoteste
         if (!LibMpv.Disponivel(out var erro)) Falha("libmpv não carregou: " + erro);
         else
         {
-            Ok($"libmpv carregou (API {LibMpv.mpv_client_api_version() >> 16}.{LibMpv.mpv_client_api_version() & 0xffff})");
+            Ok($"libmpv carregou (API {LibMpv.mpv_client_api_version() >> 16}.{LibMpv.mpv_client_api_version() & 0xffff}, {LibMpv.CarregadoDe})");
+            if (Environment.GetEnvironmentVariable("APPDIR") is { Length: > 0 } appdir && !LibMpv.CarregadoDe.StartsWith(appdir))
+                Falha("o AppImage usou o libmpv do sistema, não o de dentro");
             if (video == null) Falha("sem vídeo de teste");
             else
             {

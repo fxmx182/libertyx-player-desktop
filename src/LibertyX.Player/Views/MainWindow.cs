@@ -323,12 +323,13 @@ public sealed class MainWindow : Window
             n.Foreground = Ui.Pincel("Ouro");
             p.Children.Add(n);
         }
-        p.Children.Add(Ui.Texto(Atualizacao.Instalado
+        bool sozinho = Atualizacao.Instalado && i.Arquivo.Length > 0;
+        p.Children.Add(Ui.Texto(sozinho
             ? S("O app baixa a versão nova, atualiza por cima e abre de novo sozinho. Ajustes, chave e histórico continuam.")
             : S("O navegador abre a página da versão nova para você baixar."), 13, FontWeight.Normal, "tenue"));
-        var agora = Ui.Botao(Atualizacao.Instalado ? S("Atualizar agora") : S("Baixar"), null, "ouro", () =>
+        var agora = Ui.Botao(sozinho ? S("Atualizar agora") : S("Baixar"), null, "ouro", () =>
         {
-            if (Atualizacao.Instalado) _ = BaixarAtualizacao(i);
+            if (sozinho) _ = BaixarAtualizacao(i);
             else { Ui.Abrir(Atualizacao.Pagina); Dialogo.Fechar(); }
         });
         var botoes = Ui.Pilha(10, Orientation.Horizontal, Ui.Botao(S("Depois"), null, "plano", Dialogo.Fechar), agora);

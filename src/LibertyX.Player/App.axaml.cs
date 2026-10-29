@@ -21,6 +21,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d)
         {
+            if (OperatingSystem.IsLinux()) AtalhoAppImage.Criar();
             if (!LibMpv.Disponivel(out var erro))
             {
                 Diario.Escrever("libmpv não encontrada: " + erro);

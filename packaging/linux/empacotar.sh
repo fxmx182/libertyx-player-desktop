@@ -1,18 +1,19 @@
 #!/bin/bash
 # Empacota o LibertyX Player para Linux a partir do executável único já publicado:
-#   .tar.gz (pasta solta), .deb (Debian/Ubuntu/Mint) e .rpm (Fedora/openSUSE).
-# O motor de vídeo é o libmpv da própria distribuição (dependência do pacote), não vai dentro.
-# Uso: empacotar.sh <x64|arm64> <versão 1.0.N> <executável> <pasta de saída>
+#   .tar.gz (pasta solta), .deb (Debian/Ubuntu/Mint), .rpm (Fedora/openSUSE) e AppImage (qualquer um).
+# Nos três primeiros o motor de vídeo é o libmpv da própria distribuição (dependência do pacote);
+# o AppImage leva o próprio, LGPL, compilado por Scripts/libmpv-linux.sh (a pasta do 5º argumento).
+# Uso: empacotar.sh <x64|arm64> <versão 1.0.N> <executável> <pasta de saída> [pasta do libmpv]
 set -euo pipefail
-ARCH="$1"; VER="$2"; EXE="$3"; OUT="$4"
+ARCH="$1"; VER="$2"; EXE="$3"; OUT="$4"; LIBMPV="${5:-}"
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 case "$ARCH" in
-  x64)   DEB_ARCH=amd64; RPM_ARCH=x86_64;  SUF="" ;;
-  arm64) DEB_ARCH=arm64; RPM_ARCH=aarch64; SUF="-arm64" ;;
+  x64)   DEB_ARCH=amd64; RPM_ARCH=x86_64;  AI_ARCH=x86_64;  SUF="" ;;
+  arm64) DEB_ARCH=arm64; RPM_ARCH=aarch64; AI_ARCH=aarch64; SUF="-arm64" ;;
   *) echo "arquitetura desconhecida: $ARCH" >&2; exit 2 ;;
 esac
 
@@ -122,5 +123,27 @@ gtk-update-icon-cache -q -t /usr/share/icons/hicolor >/dev/null 2>&1 || :
 SPEC
   rpmbuild --quiet --define "_topdir $R" --target "$RPM_ARCH" -bb "$R/SPECS/libertyx-player.spec"
   cp "$R"/RPMS/*/libertyx-player-*.rpm "$OUT/libertyx-player.${RPM_ARCH}.rpm"
+fi
+
+# ── AppImage ──
+if [ -n "$LIBMPV" ]; then
+  A="$TMP/LibertyXPlayer.AppDir"
+  install -Dm755 "$EXE" "$A/usr/bin/LibertyXPlayer"
+  install -Dm644 "$LIBMPV/libmpv.so.2" "$A/usr/lib/libmpv.so.2"
+  install -Dm644 "$LIBMPV/LICENCAS-libmpv.txt" "$A/usr/share/doc/libertyx-player/LICENCAS-libmpv.txt"
+  install -Dm755 "$AQUI/AppRun" "$A/AppRun"
+  sed 's|^Exec=.*|Exec=LibertyXPlayer %U|' "$AQUI/libertyx-player.desktop" > "$A/libertyx-player.desktop"
+  install -Dm644 "$AQUI/icons/256.png" "$A/libertyx-player.png"
+  for s in 16 24 32 48 64 128 256 512; do install -Dm644 "$AQUI/icons/$s.png" "$A/usr/share/icons/hicolor/${s}x${s}/apps/libertyx-player.png"; done
+  ln -s libertyx-player.png "$A/.DirIcon"
+  TOOL="$TMP/appimagetool"
+  curl -fsSL --retry 3 -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
+  chmod +x "$TOOL"
+  RUNTIME=()
+  if [ "$AI_ARCH" != "$(uname -m)" ]; then
+    curl -fsSL --retry 3 -o "$TMP/runtime" "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$AI_ARCH"
+    RUNTIME=(--runtime-file "$TMP/runtime")
+  fi
+  ARCH="$AI_ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream "${RUNTIME[@]}" "$A" "$OUT/LibertyXPlayer-$AI_ARCH.AppImage" >/dev/null
 fi
 ls -la "$OUT"

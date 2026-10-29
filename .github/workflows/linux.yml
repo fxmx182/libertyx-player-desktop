@@ -2,8 +2,10 @@ name: LibertyX Player (Linux)
 
 # Cada arquitetura compila no próprio runner (x64 e ARM64 são grátis em repositório público),
 # roda o autoteste sem tela (libmpv do sistema, um vídeo gerado na hora, quadro desenhado na
-# memória), empacota, prova que o .deb e o .rpm instalam e abrem, e publica um release novo —
-# marcado latest, para o link /releases/latest/download/<arquivo> nunca mudar.
+# memória), empacota, prova que o .deb, o .rpm e o AppImage instalam e abrem, e publica um release
+# novo — marcado latest, para o link /releases/latest/download/<arquivo> nunca mudar.
+# O AppImage leva o próprio libmpv LGPL (Scripts/libmpv-linux.sh, num Ubuntu 22.04), em cache
+# enquanto o script não muda.
 #
 # Windows e Linux são produtos separados no mesmo código: só vira versão do Linux o commit que
 # começa com "Linux:" (ou "Windows e Linux:"). Os outros compilam e testam, e nada sai.
@@ -29,13 +31,27 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      - name: libmpv do AppImage em cache
+        id: libmpv
+        uses: actions/cache@v4
+        with:
+          path: libmpv-linux
+          key: libmpv-linux-${{ matrix.arch }}-${{ hashFiles('Scripts/libmpv-linux.sh') }}
+
+      - name: Compilar o libmpv do AppImage (LGPL, Ubuntu 22.04)
+        if: steps.libmpv.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w -e WORK=/w/libmpv-build ubuntu:22.04 Scripts/libmpv-linux.sh libmpv-linux
+          sudo chown -R "$(id -u):$(id -g)" libmpv-linux libmpv-build
+          rm -rf libmpv-build
 
       - name: libmpv, ffmpeg (vídeo de teste) e rpm
         run: |
@@ -70,9 +86,9 @@ jobs:
           echo "::notice title=Autoteste ${{ matrix.arch }}::$(tail -n 1 autoteste.txt)"
           exit $code
 
-      - name: Empacotar (.deb, .rpm, .tar.gz)
+      - name: Empacotar (.deb, .rpm, .tar.gz, AppImage)
         run: |
-          packaging/linux/empacotar.sh ${{ matrix.arch }} 1.0.${{ github.run_number }} dist/LibertyXPlayer pacotes
+          packaging/linux/empacotar.sh ${{ matrix.arch }} 1.0.${{ github.run_number }} dist/LibertyXPlayer pacotes libmpv-linux
           ls -la pacotes
 
       - name: Instalar e remover o .deb (Ubuntu)
@@ -92,6 +108,17 @@ jobs:
             'dnf install -y -q /w/pacotes/*.rpm >/dev/null && libertyx-player --autoteste /tmp/r.txt /w/teste.mp4 | tail -n 1'
           docker run --rm -v "$PWD:/w:ro" debian:bookworm-slim sh -c \
             'apt-get update -qq >/dev/null && apt-get install -y -qq libmpv2 >/dev/null 2>&1; tar -xzf /w/pacotes/LibertyXPlayer-linux*.tar.gz -C /tmp && /tmp/libertyx-player/LibertyXPlayer --autoteste /tmp/r.txt /w/teste.mp4 | tail -n 1'
+
+      # sem mpv nenhum na máquina: só o que todo desktop tem (som, fontes, TLS)
+      - name: AppImage abre sem mpv instalado (Ubuntu 22.04 e Fedora)
+        run: |
+          chmod +x pacotes/*.AppImage
+          teste='cd /tmp && APPIMAGE_EXTRACT_AND_RUN=1 /w/pacotes/LibertyXPlayer-*.AppImage --autoteste /tmp/r.txt /w/teste.mp4 >/dev/null; c=$?; grep -E "^(FALHA|OK libmpv)" /tmp/r.txt; tail -n 1 /tmp/r.txt; exit $c'
+          docker run --rm -v "$PWD:/w:ro" ubuntu:22.04 sh -c \
+            "apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends libasound2 libpulse0 libfontconfig1 libgnutls30 >/dev/null 2>&1; $teste" | tee ai-ubuntu.txt
+          docker run --rm -v "$PWD:/w:ro" fedora:41 sh -c \
+            "dnf install -y -q alsa-lib pulseaudio-libs fontconfig gnutls >/dev/null 2>&1; $teste" | tee ai-fedora.txt
+          echo "::notice title=AppImage ${{ matrix.arch }}::$(du -h pacotes/*.AppImage | cut -f1) · $(grep -h 'OK libmpv' ai-ubuntu.txt | head -1)"
 
       - name: Guardar
         if: always()
@@ -134,18 +161,24 @@ jobs:
           mkdir -p up
           cp art/linux-x64/pacotes/* art/linux-arm64/pacotes/* up/
           (cd up && sha256sum * > SHA256SUMS)
+          tam() { stat -c %s "up/$1"; }
           ver=1.0.${{ github.run_number }}
           sha=$(echo "${{ github.sha }}" | cut -c1-7)
           tag="v${ver}-$(date -u +%Y%m%d)-${sha}"
           msg=$( (printf '%s\n' "$subjects" | grep -E '^\s*(Linux|Windows e Linux)\b' || git log -1 --pretty=%s) | sed -E 's/^\s*(Windows e )?Linux\s*:\s*//' | paste -sd'·' | sed 's/·/ · /g' | cut -c1-300)
           printf 'sistema=linux\nversao=%s\ncommit=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$msg" > up/versao.txt
+          # o AppImage se atualiza sozinho (troca o arquivo); os pacotes abrem a página
+          printf 'appimage=%s\ntamanho_appimage=%s\nappimage_arm64=%s\ntamanho_appimage_arm64=%s\n' \
+            LibertyXPlayer-x86_64.AppImage "$(tam LibertyXPlayer-x86_64.AppImage)" \
+            LibertyXPlayer-aarch64.AppImage "$(tam LibertyXPlayer-aarch64.AppImage)" >> up/versao.txt
           notes="**${msg}**
 
           | Distribuição | Baixar |
           |---|---|
           | Debian, Ubuntu, Mint, Pop!_OS | \`libertyx-player_amd64.deb\` (ARM: \`_arm64.deb\`) |
           | Fedora, openSUSE | \`libertyx-player.x86_64.rpm\` (ARM: \`.aarch64.rpm\`) |
-          | Qualquer outra | \`LibertyXPlayer-linux.tar.gz\` + o libmpv da distribuição |"
+          | Qualquer uma, sem instalar nada | \`LibertyXPlayer-x86_64.AppImage\` (ARM: \`-aarch64.AppImage\`) — já traz o motor de vídeo e se atualiza sozinho |
+          | Pasta solta | \`LibertyXPlayer-linux.tar.gz\` + o libmpv da distribuição |"
           gh release create "$tag" up/* --title "LibertyX Player $ver (Linux)" --notes "$notes" --latest
           # poda: os 10 últimos do Linux bastam (o "windows-latest" não entra na conta)
           gh release list --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("v"))][10:][].tagName' | while read -r t; do gh release delete "$t" --yes --cleanup-tag; done

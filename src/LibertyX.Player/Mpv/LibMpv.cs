@@ -5,12 +5,16 @@ namespace LibertyX.Player.Mpv;
 /// <summary>
 /// A API C do libmpv, só o que o app usa. No Linux o app não leva o mpv dentro dos pacotes .deb/.rpm:
 /// usa o do sistema (libmpv2 no Debian/Ubuntu/Fedora; libmpv1 no Ubuntu 22.04 — a API que usamos é a
-/// mesma). No Windows não há mpv do sistema: o libmpv-2.dll (LGPL, Scripts/libmpv-windows.sh) vai ao
-/// lado do executável.
+/// mesma); o AppImage leva um libmpv.so.2 LGPL (Scripts/libmpv-linux.sh). No Windows não há mpv do
+/// sistema: o libmpv-2.dll (LGPL, Scripts/libmpv-windows.sh) vai ao lado do executável.
 /// </summary>
 public static unsafe class LibMpv
 {
     private const string Lib = "mpv";
+
+    /// <summary>De onde o libmpv veio (o autoteste do AppImage confere que é o de dentro).</summary>
+    public static string CarregadoDe { get; private set; } = "";
+    private static string? _erroAppImage;
 
     static LibMpv()
     {
@@ -21,11 +25,19 @@ public static unsafe class LibMpv
             if (OperatingSystem.IsWindows())
             {
                 foreach (var cand in new[] { "libmpv-2.dll", "mpv-2.dll" })
-                    if (NativeLibrary.TryLoad(Path.Combine(AppContext.BaseDirectory, cand), out var w)) return w;
+                    if (NativeLibrary.TryLoad(Path.Combine(AppContext.BaseDirectory, cand), out var w)) { CarregadoDe = cand; return w; }
                 return IntPtr.Zero;
             }
+            // o AppImage leva o próprio (Scripts/libmpv-linux.sh) em usr/lib; se não carregar (falta uma
+            // biblioteca do sistema), guarda o porquê e ainda tenta o mpv da distribuição
+            if (Environment.GetEnvironmentVariable("APPDIR") is { Length: > 0 } appdir)
+            {
+                string so = Path.Combine(appdir, "usr", "lib", "libmpv.so.2");
+                try { var a = NativeLibrary.Load(so); CarregadoDe = so; return a; }
+                catch (DllNotFoundException e) { _erroAppImage = e.Message; }
+            }
             foreach (var cand in new[] { "libmpv.so.2", "libmpv.so.1", "libmpv.so" })
-                if (NativeLibrary.TryLoad(cand, asm, path, out var h)) return h;
+                if (NativeLibrary.TryLoad(cand, asm, path, out var h)) { CarregadoDe = cand; return h; }
             return IntPtr.Zero;
         });
     }
@@ -34,7 +46,7 @@ public static unsafe class LibMpv
     public static bool Disponivel(out string? erro)
     {
         try { _ = mpv_client_api_version(); erro = null; return true; }
-        catch (DllNotFoundException e) { erro = e.Message; return false; }
+        catch (DllNotFoundException e) { erro = _erroAppImage ?? e.Message; return false; }
     }
 
     public enum Format { None = 0, String = 1, OsdString = 2, Flag = 3, Int64 = 4, Double = 5, Node = 6 }

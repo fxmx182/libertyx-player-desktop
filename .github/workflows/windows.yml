@@ -10,7 +10,7 @@ name: LibertyX Player (Windows)
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "packaging/linux/**", ".github/workflows/linux.yml"]
+    paths-ignore: ["**.md", "packaging/linux/**", ".github/workflows/linux.yml", "Scripts/libmpv-linux.sh"]
   workflow_dispatch:
 
 concurrency:

@@ -7,7 +7,8 @@ namespace LibertyX.Player.Core;
 /// Atualização ao abrir o app (o mesmo caminho do Partition): o CI publica um versao.txt junto de cada
 /// versão; o app compara com o próprio número de build. No Windows instalado, baixa o instalador e
 /// roda por cima em silêncio — o AppId fixo do Inno troca a versão mantendo ajustes, chave e histórico,
-/// e o /UPDATE=1 faz o instalador reabrir o app. Portátil (zip) e Linux: o navegador baixa a nova.
+/// e o /UPDATE=1 faz o instalador reabrir o app. AppImage: baixa o novo do lado e troca o arquivo.
+/// Portátil (zip), .deb, .rpm e .tar.gz: o navegador baixa a nova.
 /// </summary>
 public static class Atualizacao
 {
@@ -29,15 +30,29 @@ public static class Atualizacao
     public static int BuildAtual => int.TryParse(Environment.GetEnvironmentVariable("LIBERTYX_BUILD"), out int b) ? b
         : System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.Build ?? 0;
 
-    /// <summary>Rodando da pasta do instalador (o desinstalador do Inno fica do lado).</summary>
-    public static bool Instalado
+    /// <summary>Atualiza sozinho: Windows rodando da pasta do instalador (o desinstalador do Inno fica do
+    /// lado), ou Linux rodando de um AppImage numa pasta onde dá para escrever.</summary>
+    public static bool Instalado => _instalado.Value;
+    private static readonly Lazy<bool> _instalado = new(() =>
     {
-        get
+        if (OperatingSystem.IsWindows())
         {
-            if (!OperatingSystem.IsWindows()) return false;
             try { return File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe")); } catch { return false; }
         }
-    }
+        if (AppImage is not { } ai) return false;
+        try
+        {
+            string teste = ai + ".teste";
+            File.WriteAllBytes(teste, []);
+            File.Delete(teste);
+            return true;
+        }
+        catch { return false; }
+    });
+
+    /// <summary>O arquivo .AppImage de onde o app está rodando (o runtime do AppImage diz em $APPIMAGE).</summary>
+    public static string? AppImage => !OperatingSystem.IsWindows()
+        && Environment.GetEnvironmentVariable("APPIMAGE") is { Length: > 0 } ai && File.Exists(ai) ? ai : null;
 
     private static bool Arm => RuntimeInformation.OSArchitecture == Architecture.Arm64;
 
@@ -64,8 +79,8 @@ public static class Atualizacao
             string chave = Arm ? "_arm64" : "";
             string arquivo = OperatingSystem.IsWindows()
                 ? kv.GetValueOrDefault("setup" + chave, Arm ? "LibertyXPlayer-Setup-arm64.exe" : "LibertyXPlayer-Setup.exe")
-                : "";
-            long.TryParse(kv.GetValueOrDefault("tamanho" + chave), out long tam);
+                : AppImage != null ? kv.GetValueOrDefault("appimage" + chave, "") : "";
+            long.TryParse(kv.GetValueOrDefault((OperatingSystem.IsWindows() ? "tamanho" : "tamanho_appimage") + chave), out long tam);
             return new Info(build, v, arquivo, tam, kv.GetValueOrDefault("novidades", ""));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException) { return null; }
@@ -73,11 +88,14 @@ public static class Atualizacao
 
     public static bool Nova(Info i) => (BuildAtual > 0 || Environment.GetEnvironmentVariable("LIBERTYX_BUILD") != null) && i.Build > BuildAtual;
 
-    /// <summary>Só no Windows instalado: baixa o instalador para a pasta temporária e confere o tamanho.</summary>
+    /// <summary>Só quando <see cref="Instalado"/>: baixa o instalador para a pasta temporária (Windows) ou o
+    /// AppImage novo para o lado do atual (Linux — a troca depois é um rename na mesma pasta) e confere o tamanho.</summary>
     public static async Task<string> Baixar(Info i, IProgress<double> progresso, CancellationToken ct)
     {
         using var http = Http(TimeSpan.FromMinutes(20));
-        string destino = Path.Combine(Path.GetTempPath(), $"LibertyXPlayer-Setup-{i.Versao}{(Arm ? "-arm64" : "")}.exe");
+        string destino = OperatingSystem.IsWindows()
+            ? Path.Combine(Path.GetTempPath(), $"LibertyXPlayer-Setup-{i.Versao}{(Arm ? "-arm64" : "")}.exe")
+            : AppImage + ".novo";
         using (var resp = await http.GetAsync(Base + i.Arquivo, HttpCompletionOption.ResponseHeadersRead, ct))
         {
             resp.EnsureSuccessStatusCode();
@@ -98,8 +116,20 @@ public static class Atualizacao
         return destino;
     }
 
-    /// <summary>Roda o instalador por cima (com a janelinha de progresso); ele reabre o app no fim.</summary>
-    public static void Instalar(string setup) =>
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(setup,
-            "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE=1") { UseShellExecute = true });
+    /// <summary>Windows: roda o instalador por cima (com a janelinha de progresso); ele reabre o app no fim.
+    /// AppImage: troca o arquivo (rename atômico — esta cópia continua rodando do arquivo antigo até
+    /// fechar) e abre o novo.</summary>
+    public static void Instalar(string baixado)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(baixado,
+                "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE=1") { UseShellExecute = true });
+            return;
+        }
+        string alvo = AppImage!;
+        File.SetUnixFileMode(baixado, File.GetUnixFileMode(alvo) | UnixFileMode.UserExecute | UnixFileMode.UserRead);
+        File.Move(baixado, alvo, true);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(alvo) { UseShellExecute = false });
+    }
 }
