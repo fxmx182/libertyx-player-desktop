@@ -124,9 +124,10 @@ public sealed class BibliotecaView : DockPanel
         if (_pastas.Count > 0)
         {
             _corpo.Children.Add(Ui.Texto(S("Pastas"), 17, FontWeight.Bold));
-            var wrap = new WrapPanel { Orientation = Orientation.Horizontal };
-            foreach (var p in _pastas) wrap.Children.Add(CartaoPasta(p));
-            _corpo.Children.Add(wrap);
+            // o botão grade/lista vale também para as pastas da tela inicial
+            Panel painel = Prefs.Atual.Lista ? new StackPanel { Spacing = 2 } : new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var p in _pastas) painel.Children.Add(Prefs.Atual.Lista ? LinhaPasta(p) : CartaoPasta(p));
+            _corpo.Children.Add(painel);
         }
     }
 
@@ -139,7 +140,8 @@ public sealed class BibliotecaView : DockPanel
         {
             if (itens.Count >= 12) break;
             Midia? m = null;
-            if (end.StartsWith('/')) { if (File.Exists(end)) m = Midia.DeArquivo(end); }
+            // arquivo do computador: /… no Linux, C:\… no Windows
+            if (!end.Contains("://") && Path.IsPathFullyQualified(end)) { if (File.Exists(end)) m = Midia.DeArquivo(end); }
             else if (ConexaoSmb.Partes(end) is { } sp && Servidores.Achar(sp.id) is { } srv)
                 m = new Midia { Endereco = end, Titulo = r.Titulo ?? Path.GetFileNameWithoutExtension(sp.caminho), Origem = Origem.Smb, Pasta = srv.Nome };
             else if (end.Contains("://")) m = new Midia { Endereco = end, Titulo = r.Titulo ?? Midia.DeUrl(end).Titulo, Origem = Origem.Url };
@@ -169,7 +171,13 @@ public sealed class BibliotecaView : DockPanel
             b.ContextFlyout = menu;
             faixa.Children.Add(b);
         }
-        return Ui.Pilha(10, Orientation.Vertical, Ui.Texto(S("Continuar assistindo"), 17, FontWeight.Bold),
+        var limpar = Ui.Botao(S("Limpar"), Icones.Apagar, "plano", () =>
+        {
+            Prefs.Atual.Posicoes.Clear(); Prefs.Atual.Salvar(); Montar();
+        }, 15);
+        ToolTip.SetTip(limpar, S("Apagar o histórico de reprodução"));
+        var topo = Ui.Pilha(12, Orientation.Horizontal, Ui.Texto(S("Continuar assistindo"), 17, FontWeight.Bold), limpar);
+        return Ui.Pilha(10, Orientation.Vertical, topo,
             new ScrollViewer { Content = faixa, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
     }
 
@@ -206,6 +214,32 @@ public sealed class BibliotecaView : DockPanel
         };
         ToolTip.SetTip(b, p.Caminho);
         b.Click += (_, _) => { _aberta = p; Montar(); };
+        b.ContextFlyout = MenuPasta(p);
+        return b;
+    }
+
+    private Control LinhaPasta(PastaDeVideos p)
+    {
+        var capa = Ui.Capa(128, 72, out var img);
+        CarregarQuandoVisivel(capa, p.Videos.OrderByDescending(v => v.Data).First(), img);
+        string onde = p.Caminho.StartsWith(Caminhos.Home) ? "~" + p.Caminho[Caminhos.Home.Length..] : p.Caminho;
+        var textos = Ui.Pilha(4, Orientation.Vertical,
+            Ui.Pilha(6, Orientation.Horizontal, Ui.Icone(Icones.Pasta, 15, Ui.Pincel("Ouro")), Ui.Linha(p.Nome, 14, FontWeight.SemiBold)),
+            Ui.Linha($"{P(p.Videos.Count, "{0} vídeo", "{0} vídeos")} · {onde}", 12, FontWeight.Normal, "tenue"));
+        textos.VerticalAlignment = VerticalAlignment.Center;
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        g.Children.Add(capa);
+        Grid.SetColumn(textos, 1); textos.Margin = new Thickness(14, 0);
+        g.Children.Add(textos);
+        var b = new Button { Classes = { "cartao" }, Padding = new Thickness(6), HorizontalAlignment = HorizontalAlignment.Stretch, Content = g };
+        ToolTip.SetTip(b, p.Caminho);
+        b.Click += (_, _) => { _aberta = p; Montar(); };
+        b.ContextFlyout = MenuPasta(p);
+        return b;
+    }
+
+    private MenuFlyout MenuPasta(PastaDeVideos p)
+    {
         var menu = new MenuFlyout();
         var tocar = new MenuItem { Header = S("Tocar tudo") };
         tocar.Click += (_, _) => _tocar(Biblioteca.Ordenar(p.Videos, "nome").ToList(), 0);
@@ -218,8 +252,7 @@ public sealed class BibliotecaView : DockPanel
             _pastas.Remove(p); Montar();
         };
         menu.Items.Add(tocar); menu.Items.Add(abrir); menu.Items.Add(ocultar);
-        b.ContextFlyout = menu;
-        return b;
+        return menu;
     }
 
     // ───────── vídeos ─────────

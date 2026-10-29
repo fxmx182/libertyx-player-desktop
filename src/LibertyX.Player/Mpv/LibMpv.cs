@@ -108,6 +108,7 @@ public static unsafe class LibMpv
     [DllImport(Lib)] public static extern int mpv_command_async(IntPtr ctx, ulong reply, byte** args);
     [DllImport(Lib)] public static extern int mpv_set_property_string(IntPtr ctx, byte* name, byte* data);
     [DllImport(Lib)] public static extern int mpv_set_property(IntPtr ctx, byte* name, Format format, void* data);
+    [DllImport(Lib)] public static extern int mpv_set_property_async(IntPtr ctx, ulong reply, byte* name, Format format, void* data);
     [DllImport(Lib)] public static extern int mpv_get_property(IntPtr ctx, byte* name, Format format, void* data);
     [DllImport(Lib)] public static extern IntPtr mpv_get_property_string(IntPtr ctx, byte* name);
     [DllImport(Lib)] public static extern int mpv_observe_property(IntPtr ctx, ulong reply, byte* name, Format format);

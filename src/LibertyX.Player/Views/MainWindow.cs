@@ -45,7 +45,13 @@ public sealed class MainWindow : Window
         AddHandler(DragDrop.DropEvent, Soltou);
         AddHandler(KeyDownEvent, Tecla, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Construir();
-        Closing += (_, _) => { _player.SalvarPosicao(); Prefs.Atual.Salvar(); };
+        Opened += (_, _) => _ = ProcurarAtualizacao();
+        Closing += (_, e) =>
+        {
+            // fechar a mini janela (Alt+F4, barra de tarefas) é voltar à janela grande, com o vídeo tocando
+            if (_antesDaMini != null && !e.IsProgrammatic) { e.Cancel = true; SairDaMini(); return; }
+            _player.SalvarPosicao(); Prefs.Atual.Salvar();
+        };
     }
 
     /// <summary>Monta tudo (de novo, ao trocar o idioma).</summary>
@@ -289,5 +295,72 @@ public sealed class MainWindow : Window
         WindowState = a.estado;
         _player.Mini = false;
         _player.AjustarModo();
+    }
+
+    // ───────── atualização ─────────
+
+    /// <summary>Ao abrir: confere a versão publicada e, havendo nova, pergunta — sem interromper um vídeo nem outro diálogo.</summary>
+    private async Task ProcurarAtualizacao()
+    {
+        if (Environment.GetEnvironmentVariable("LIBERTYX_SEM_ATUALIZACAO") == "1") return;
+        await Task.Delay(TimeSpan.FromSeconds(4));
+        var i = await Task.Run(() => Atualizacao.Conferir());
+        if (i == null || !Atualizacao.Nova(i)) return;
+        // espera o vídeo acabar ou o diálogo fechar (até umas duas horas); um filme não é cortado no meio
+        for (int k = 0; k < 240 && (_player.Tocando || Dialogo.Aberto); k++) await Task.Delay(TimeSpan.FromSeconds(30));
+        if (_player.Tocando || Dialogo.Aberto) return;
+        OferecerAtualizacao(i);
+    }
+
+    private void OferecerAtualizacao(Atualizacao.Info i)
+    {
+        var p = Ui.Pilha(12, Orientation.Vertical,
+            Ui.Texto(S("Atualização disponível"), 20, FontWeight.ExtraBold),
+            Ui.Texto(F("Versão {0} · você está na {1}", i.Versao, "1.0." + Atualizacao.BuildAtual), 13, FontWeight.Normal, "apagado"));
+        if (i.Novidades.Length > 0)
+        {
+            var n = Ui.Texto(S("O que mudou: ") + i.Novidades, 13, FontWeight.SemiBold);
+            n.Foreground = Ui.Pincel("Ouro");
+            p.Children.Add(n);
+        }
+        p.Children.Add(Ui.Texto(Atualizacao.Instalado
+            ? S("O app baixa a versão nova, atualiza por cima e abre de novo sozinho. Ajustes, chave e histórico continuam.")
+            : S("O navegador abre a página da versão nova para você baixar."), 13, FontWeight.Normal, "tenue"));
+        var agora = Ui.Botao(Atualizacao.Instalado ? S("Atualizar agora") : S("Baixar"), null, "ouro", () =>
+        {
+            if (Atualizacao.Instalado) _ = BaixarAtualizacao(i);
+            else { Ui.Abrir(Atualizacao.Pagina); Dialogo.Fechar(); }
+        });
+        var botoes = Ui.Pilha(10, Orientation.Horizontal, Ui.Botao(S("Depois"), null, "plano", Dialogo.Fechar), agora);
+        botoes.HorizontalAlignment = HorizontalAlignment.Right;
+        p.Children.Add(botoes);
+        Dialogo.Mostrar(p, 480);
+    }
+
+    private async Task BaixarAtualizacao(Atualizacao.Info i)
+    {
+        var barra = new ProgressBar { Minimum = 0, Maximum = 1, Height = 6 };
+        var texto = Ui.Texto(F("Baixando a versão {0}…", i.Versao), 14, FontWeight.SemiBold);
+        Dialogo.Mostrar(Ui.Pilha(14, Orientation.Vertical, Ui.Texto(S("Atualizando"), 20, FontWeight.ExtraBold), texto, barra), 480);
+        try
+        {
+            string setup = await Atualizacao.Baixar(i, new Progress<double>(x => barra.Value = x), CancellationToken.None);
+            texto.Text = S("Instalando — o app fecha e abre de novo na versão nova.");
+            _player.SalvarPosicao();
+            Prefs.Atual.Salvar();
+            Atualizacao.Instalar(setup);
+            await Task.Delay(800);
+            (Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+        }
+        catch (Exception e)
+        {
+            Diario.Erro(e);
+            var erro = Ui.Texto(S("Não deu para baixar a atualização agora.") + "\n" + e.Message, 13);
+            erro.Foreground = Ui.Pincel("Vermelho");
+            var botoes = Ui.Pilha(10, Orientation.Horizontal, Ui.Botao(S("Fechar"), null, "plano", Dialogo.Fechar),
+                Ui.Botao(S("Abrir a página"), null, "vidro", () => { Ui.Abrir(Atualizacao.Pagina); Dialogo.Fechar(); }));
+            botoes.HorizontalAlignment = HorizontalAlignment.Right;
+            Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical, Ui.Texto(S("Atualização"), 20, FontWeight.ExtraBold), erro, botoes), 480);
+        }
     }
 }

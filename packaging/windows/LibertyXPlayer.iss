@@ -169,3 +169,11 @@ Root: HKA; Subkey: "Software\LibertyX\LibertyX Player\Capabilities\FileAssociati
 
 [Run]
 Filename: "{app}\LibertyXPlayer.exe"; Description: "{cm:LaunchProgram,LibertyX Player}"; Flags: nowait postinstall skipifsilent
+; atualização pelo próprio app (/UPDATE=1): reabre o app no fim
+Filename: "{app}\LibertyXPlayer.exe"; Flags: nowait skipifnotsilent; Check: IsUpdate
+
+[Code]
+function IsUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;

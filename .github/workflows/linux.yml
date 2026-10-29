@@ -138,7 +138,7 @@ jobs:
           sha=$(echo "${{ github.sha }}" | cut -c1-7)
           tag="v${ver}-$(date -u +%Y%m%d)-${sha}"
           msg=$( (printf '%s\n' "$subjects" | grep -E '^\s*(Linux|Windows e Linux)\b' || git log -1 --pretty=%s) | sed -E 's/^\s*(Windows e )?Linux\s*:\s*//' | paste -sd'·' | sed 's/·/ · /g' | cut -c1-300)
-          printf 'versao=%s\ncommit=%s\n' "$ver" "${{ github.sha }}" > up/versao.txt
+          printf 'sistema=linux\nversao=%s\ncommit=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$msg" > up/versao.txt
           notes="**${msg}**
 
           | Distribuição | Baixar |

@@ -50,8 +50,15 @@ O que muda no Windows:
   do que o Windows já tem. O CI guarda a DLL em cache enquanto o script não mudar. Sem Lua: os
   sites de vídeo pelo `yt-dlp` ficam só no Linux.
 - **Vídeo**: o Avalonia desenha por ANGLE (OpenGL ES sobre Direct3D 11) e o mpv desenha dentro dele.
-  Se o OpenGL quebrar ao desenhar (driver antigo, área de trabalho remota, Wine), o app não fecha:
-  passa para o vídeo por software. `LIBERTYX_GL=wgl` troca pelo OpenGL do driver, para comparar.
+  O ANGLE entrega cada quadro numa textura compartilhada do Direct3D; onde o driver não compartilha
+  (Wine, alguns drivers, área de trabalho remota) o Avalonia quebrava no meio do desenho e a janela
+  congelava. Por isso o app cria antes uma textura igual (`Win.TexturaCompartilhada`) e, sem
+  compartilhamento, já começa pelo vídeo por software. `LIBERTYX_GL=wgl` troca pelo OpenGL do driver.
+- **Atualização ao abrir** (`Core/Atualizacao.cs`, como no Partition): o app lê o `versao.txt` do
+  release e, havendo build maior, pergunta — sem cortar um vídeo que está tocando. Instalado: baixa
+  o instalador, confere o tamanho e roda `/SILENT /UPDATE=1`, que troca a versão e reabre o app.
+  Portátil (zip) e Linux: abre a página da versão nova. `LIBERTYX_BUILD=0` finge um build velho
+  para testar; `LIBERTYX_SEM_ATUALIZACAO=1` desliga.
 - **Biblioteca**: Vídeos e Downloads do usuário (pastas conhecidas, mesmo se mudadas de lugar) e os
   outros drives (D:, E:, pendrives) — o C: inteiro não, que é o sistema.
 - **Rede**: sem avahi; a varredura da porta 445 acha os servidores e o nome vem pelo NetBIOS/LLMNR.
@@ -64,7 +71,8 @@ O que muda no Windows:
   sobrou. Artes e ícone: `Scripts/instalador.py`.
 - Dados em `%APPDATA%\LibertyX Player` e `%LOCALAPPDATA%\LibertyX Player\Cache` (diário, miniaturas).
 - Teste local sem Windows: o .exe roda no **Wine** (autoteste e janela; o ANGLE do Wine não
-  compartilha textura, então ali o vídeo sai sempre pelo caminho por software).
+  compartilha textura, então ali o vídeo sai sempre pelo caminho por software). O instalador do
+  Inno é de 32 bits: o Wine precisa do `wine32` e de um prefixo criado com ele.
 
 ## O que tem
 

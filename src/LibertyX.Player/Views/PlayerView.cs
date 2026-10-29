@@ -30,7 +30,7 @@ public sealed class PlayerView : Grid
     private readonly Border _escuro, _hud, _topo, _baixo, _painel, _retomar, _carregando;
     private readonly TextBlock _hudTexto, _titulo, _tempo, _total, _carregandoTexto;
     private readonly BarraDeTempo _barra;
-    private readonly Button _play, _telaCheia, _mudo;
+    private readonly Button _play, _telaCheia, _mudo, _voltar;
     private readonly Slider _volume;
     private readonly DispatcherTimer _esconder, _hudTimer, _salvarTimer;
     private IDisposable? _dormir;
@@ -41,7 +41,8 @@ public sealed class PlayerView : Grid
     private int _indice;
     private Midia? _atual;
     private double _pos, _dur;
-    private bool _pausado, _fim, _abrindo, _soltandoBusca;
+    private bool _pausado, _fim, _abrindo, _soltandoBusca, _volumeDoMpv;
+    private long _volumeMexido;
     private double _escurecer;
     private string _trilhasJson = "[]";
     private readonly Random _sorte = new();
@@ -66,7 +67,10 @@ public sealed class PlayerView : Grid
         Focusable = true;
 
         // ── o vídeo ──
-        if (Environment.GetEnvironmentVariable("LIBERTYX_SW") == "1" || MpvGlView.Quebrado != null) { _video = new MpvSwView { Core = mpv }; _videoPronto = true; }
+        // Windows com ANGLE (o padrão) sem textura compartilhada: o OpenGL quebraria no meio e congelaria a janela
+        bool semGl = Environment.GetEnvironmentVariable("LIBERTYX_SW") == "1" || MpvGlView.Quebrado != null
+            || (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("LIBERTYX_GL") != "wgl" && !Win.TexturaCompartilhada());
+        if (semGl) { _video = new MpvSwView { Core = mpv }; _videoPronto = true; }
         else
         {
             var gl = new MpvGlView { Core = mpv };
@@ -111,7 +115,9 @@ public sealed class PlayerView : Grid
         _titulo = Ui.Linha("", 16, FontWeight.Bold);
         _titulo.VerticalAlignment = VerticalAlignment.Center;
         var topoGrade = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(12, 10) };
-        topoGrade.Children.Add(Ui.BotaoIcone(Icones.Voltar, S("Voltar à biblioteca (Esc)"), Fechar));
+        // na mini janela, o mesmo canto volta à janela grande com o vídeo tocando — não fecha o vídeo
+        _voltar = Ui.BotaoIcone(Icones.Voltar, S("Voltar à biblioteca (Esc)"), () => { if (Mini) AlternarMiniJanela?.Invoke(); else Fechar(); });
+        topoGrade.Children.Add(_voltar);
         Grid.SetColumn(_titulo, 1);
         _titulo.Margin = new Thickness(10, 0);
         topoGrade.Children.Add(_titulo);
@@ -144,7 +150,12 @@ public sealed class PlayerView : Grid
         _telaCheia = Ui.BotaoIcone(Icones.TelaCheia, S("Tela cheia (F)"), () => AlternarTelaCheia?.Invoke());
         _mudo = Ui.BotaoIcone(Icones.Volume, S("Sem som (M)"), () => _mpv.Command("cycle", "mute"));
         _volume = new Slider { Minimum = 0, Maximum = 150, Width = 110, VerticalAlignment = VerticalAlignment.Center, Value = Prefs.Atual.Volume };
-        _volume.PropertyChanged += (_, e) => { if (e.Property == Avalonia.Controls.Primitives.RangeBase.ValueProperty) _mpv.SetDouble("volume", _volume.Value); };
+        _volume.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != Avalonia.Controls.Primitives.RangeBase.ValueProperty || _volumeDoMpv) return;
+            _volumeMexido = Environment.TickCount64;
+            _mpv.SetDoubleAsync("volume", _volume.Value);
+        };
 
         var linhaTempo = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(14, 0) };
         _tempo.VerticalAlignment = _total.VerticalAlignment = VerticalAlignment.Center;
@@ -413,8 +424,13 @@ public sealed class PlayerView : Grid
                 else if (!b) _fim = false;
                 break;
             case "volume" when v is double vol:
-                if (Math.Abs(_volume.Value - vol) > 0.5) _volume.Value = vol;
                 Prefs.Atual.Volume = vol;
+                // arrastando a barra, o mpv ainda devolve os valores de antes: eles não podem puxar a barra de
+                // volta (nem voltar ao mpv) — era o vai e volta que prendia a interface
+                if (Environment.TickCount64 - _volumeMexido < 500 || Math.Abs(_volume.Value - vol) <= 0.5) break;
+                _volumeDoMpv = true;
+                _volume.Value = vol;
+                _volumeDoMpv = false;
                 break;
             case "mute" when v is bool m:
                 ((PathIcon)_mudo.Content!).Data = StreamGeometry.Parse(m ? Icones.Mudo : Icones.Volume);
@@ -1001,6 +1017,8 @@ public sealed class PlayerView : Grid
         ((PathIcon)_telaCheia.Content!).Data = StreamGeometry.Parse(TelaCheia ? Icones.SairTelaCheia : Icones.TelaCheia);
         _volume.IsVisible = !Mini;
         _titulo.IsVisible = !Mini;
+        ((PathIcon)_voltar.Content!).Data = StreamGeometry.Parse(Mini ? Icones.Ampliar : Icones.Voltar);
+        ToolTip.SetTip(_voltar, Mini ? S("Voltar à janela grande (Esc)") : S("Voltar à biblioteca (Esc)"));
     }
 
     // ───────── protetor de tela ─────────

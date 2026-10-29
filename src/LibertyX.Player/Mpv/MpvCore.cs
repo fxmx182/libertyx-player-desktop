@@ -89,6 +89,14 @@ public sealed unsafe class MpvCore : IDisposable
         try { mpv_set_property(Handle, (byte*)n, Format.Double, &valor); } finally { Marshal.FreeCoTaskMem(n); }
     }
 
+    /// <summary>Sem esperar o mpv: para o que muda muitas vezes por segundo (a barra de volume sendo arrastada).</summary>
+    public void SetDoubleAsync(string nome, double valor)
+    {
+        if (Handle == IntPtr.Zero) return;
+        var n = Utf8(nome);
+        try { mpv_set_property_async(Handle, 0, (byte*)n, Format.Double, &valor); } finally { Marshal.FreeCoTaskMem(n); }
+    }
+
     public void SetFlag(string nome, bool valor)
     {
         if (Handle == IntPtr.Zero) return;

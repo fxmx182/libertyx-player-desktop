@@ -195,7 +195,9 @@ jobs:
           cp art/windows-x64/dist/LibertyXPlayer-Setup.exe art/windows-x64/dist/LibertyXPlayer-windows-x64.zip \
              art/windows-arm64/dist/LibertyXPlayer-Setup-arm64.exe art/windows-arm64/dist/LibertyXPlayer-windows-arm64.zip up/
           (cd up && sha256sum * > SHA256SUMS)
-          printf 'sistema=windows\nversao=%s\ncommit=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$novidade" > versao.txt
+          # o app lê setup/tamanho para atualizar sozinho (conferindo o tamanho do que baixou)
+          printf 'sistema=windows\nversao=%s\ncommit=%s\nnovidades=%s\nsetup=LibertyXPlayer-Setup.exe\ntamanho=%s\nsetup_arm64=LibertyXPlayer-Setup-arm64.exe\ntamanho_arm64=%s\n' \
+            "$ver" "${{ github.sha }}" "$novidade" "$(stat -c %s up/LibertyXPlayer-Setup.exe)" "$(stat -c %s up/LibertyXPlayer-Setup-arm64.exe)" > versao.txt
           notes="**Novidades:** ${novidade}
 
           | Computador | Baixar |

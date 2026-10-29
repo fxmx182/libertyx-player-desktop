@@ -91,7 +91,10 @@ public static class Biblioteca
         if (OperatingSystem.IsWindows())
         {
             string sistema = Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
-            foreach (var di in DriveInfo.GetDrives())
+            // a lista de drives pode falhar (o Wine, um drive de rede caído): sem ela, a biblioteca ainda varre o resto
+            DriveInfo[] drives;
+            try { drives = DriveInfo.GetDrives(); } catch { yield break; }
+            foreach (var di in drives)
             {
                 bool ok;
                 try { ok = di.IsReady && di.DriveType is DriveType.Fixed or DriveType.Removable; } catch { continue; }
