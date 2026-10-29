@@ -72,6 +72,8 @@ public sealed class Prefs
     public string? IdiomaAudio { get; set; }            // "por" "eng"… (alang do mpv)
     public string? IdiomaLegenda { get; set; }
     public bool GuiaVisto { get; set; }
+    public double MiniLargura { get; set; } = 480;      // a mini janela abre do tamanho que ficou
+    public double MiniAltura { get; set; } = 270;
 
     // Pro (o mesmo modelo do Android: 7 dias de teste contados pelo app, ou a chave LibertyX)
     public long? InicioDoTeste { get; set; }

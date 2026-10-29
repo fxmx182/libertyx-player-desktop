@@ -246,17 +246,27 @@ public sealed class MainWindow : Window
 
     // ───────── tela cheia e mini janela ─────────
 
+    // Quem diz se está em tela cheia é o _player.TelaCheia, não o WindowState: no KDE (X11) a janela
+    // em tela cheia volta como "Maximized" (o KWin manda os dois estados), e o botão entrava de novo
+    // em vez de sair.
     private void AlternarTelaCheia()
     {
         if (_antesDaMini != null) SairDaMini();
-        if (WindowState == WindowState.FullScreen) SairDaTelaCheia();
-        else { _antesDaTelaCheia = WindowState; WindowState = WindowState.FullScreen; _player.TelaCheia = true; }
+        if (_player.TelaCheia) SairDaTelaCheia();
+        else
+        {
+            _antesDaTelaCheia = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState;
+            WindowState = WindowState.FullScreen;
+            _player.TelaCheia = true;
+        }
         _player.AjustarModo();
     }
 
     private void SairDaTelaCheia()
     {
-        if (WindowState != WindowState.FullScreen) return;
+        if (!_player.TelaCheia) return;
+        // passa por FullScreen antes: se o estado lido já é o de destino (Maximized), o Avalonia não mexeria
+        WindowState = WindowState.FullScreen;
         WindowState = _antesDaTelaCheia;
         _player.TelaCheia = false;
         _player.AjustarModo();
@@ -272,12 +282,16 @@ public sealed class MainWindow : Window
         SystemDecorations = SystemDecorations.None;
         Topmost = true;
         MinWidth = 320; MinHeight = 180;
-        Width = 480; Height = 270;
+        // o tamanho que a pessoa deixou da última vez (as beiradas redimensionam: PlayerView.Beirada)
+        double larg = Math.Max(320, Prefs.Atual.MiniLargura), alt = Math.Max(180, Prefs.Atual.MiniAltura);
+        Width = larg; Height = alt;
         if (Screens.ScreenFromWindow(this) is { } tela)
         {
             var area = tela.WorkingArea;
             double esc = tela.Scaling;
-            Position = new PixelPoint(area.Right - (int)(500 * esc), area.Bottom - (int)(290 * esc));
+            larg = Math.Min(larg, area.Width / esc - 40); alt = Math.Min(alt, area.Height / esc - 40);
+            Width = larg; Height = alt;
+            Position = new PixelPoint(area.Right - (int)((larg + 20) * esc), area.Bottom - (int)((alt + 20) * esc));
         }
         _player.Mini = true;
         _player.AjustarModo();
@@ -287,6 +301,9 @@ public sealed class MainWindow : Window
     {
         if (_antesDaMini is not { } a) return;
         _antesDaMini = null;
+        Prefs.Atual.MiniLargura = Math.Round(ClientSize.Width);
+        Prefs.Atual.MiniAltura = Math.Round(ClientSize.Height);
+        Prefs.Atual.Salvar();
         Topmost = false;
         SystemDecorations = SystemDecorations.Full;
         MinWidth = 640; MinHeight = 420;

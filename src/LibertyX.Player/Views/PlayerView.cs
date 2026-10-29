@@ -217,7 +217,18 @@ public sealed class PlayerView : Grid
         _salvarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _salvarTimer.Tick += (_, _) => SalvarPosicao();
 
-        PointerMoved += (_, _) => Mexeu();
+        PointerMoved += (_, e) =>
+        {
+            Mexeu();
+            if (Mini) Cursor = Beirada(e.GetPosition(this)) is { } b ? Cursores[b] : null;
+        };
+        // a mini janela não tem borda do sistema: as beiradas redimensionam (antes de qualquer botão ou gesto)
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (!Mini || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || Beirada(e.GetPosition(this)) is not { } b) return;
+            (Janela() as Window)?.BeginResizeDrag(b, e);
+            e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         AttachedToVisualTree += (_, _) => ConferirVideo();
         // (o OpenGL pode quebrar depois de abrir: a troca vale mesmo com Iniciou)
         _aoQuebrar = () => Dispatcher.UIThread.Post(() => { if (_video is MpvGlView g) TrocarPorSoftware(g); });
@@ -1012,9 +1023,35 @@ public sealed class PlayerView : Grid
 
     // ───────── mini janela e tela cheia ─────────
 
+    private static readonly Dictionary<WindowEdge, Cursor> Cursores = new()
+    {
+        [WindowEdge.NorthWest] = new(StandardCursorType.TopLeftCorner), [WindowEdge.NorthEast] = new(StandardCursorType.TopRightCorner),
+        [WindowEdge.SouthWest] = new(StandardCursorType.BottomLeftCorner), [WindowEdge.SouthEast] = new(StandardCursorType.BottomRightCorner),
+        [WindowEdge.West] = new(StandardCursorType.LeftSide), [WindowEdge.East] = new(StandardCursorType.RightSide),
+        [WindowEdge.North] = new(StandardCursorType.TopSide), [WindowEdge.South] = new(StandardCursorType.BottomSide),
+    };
+
+    /// <summary>Que beirada da mini janela está debaixo do ponteiro (10 px; os cantos pegam 18).</summary>
+    private WindowEdge? Beirada(Point p)
+    {
+        double w = Bounds.Width, h = Bounds.Height;
+        bool cantoE = p.X < 18, cantoD = p.X > w - 18, cantoC = p.Y < 18, cantoB = p.Y > h - 18;
+        if (cantoC && cantoE) return WindowEdge.NorthWest;
+        if (cantoC && cantoD) return WindowEdge.NorthEast;
+        if (cantoB && cantoE) return WindowEdge.SouthWest;
+        if (cantoB && cantoD) return WindowEdge.SouthEast;
+        if (p.X < 10) return WindowEdge.West;
+        if (p.X > w - 10) return WindowEdge.East;
+        if (p.Y < 10) return WindowEdge.North;
+        if (p.Y > h - 10) return WindowEdge.South;
+        return null;
+    }
+
     public void AjustarModo()
     {
+        if (!Mini) Cursor = null;
         ((PathIcon)_telaCheia.Content!).Data = StreamGeometry.Parse(TelaCheia ? Icones.SairTelaCheia : Icones.TelaCheia);
+        ToolTip.SetTip(_telaCheia, TelaCheia ? S("Sair da tela cheia (F)") : S("Tela cheia (F)"));
         _volume.IsVisible = !Mini;
         _titulo.IsVisible = !Mini;
         ((PathIcon)_voltar.Content!).Data = StreamGeometry.Parse(Mini ? Icones.Ampliar : Icones.Voltar);
