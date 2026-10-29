@@ -1,0 +1,217 @@
+name: LibertyX Player (Windows)
+
+# 1) o libmpv-2.dll em LGPL, compilado do Linux com o llvm-mingw (x64 e ARM64), em cache enquanto
+#    Scripts/libmpv-windows.sh não mudar; 2) em cada arquitetura, num Windows de verdade: publica o
+#    .exe, roda o autoteste sem tela, monta o instalador e prova que ele instala, registra o "Abrir
+#    com", abre e desinstala sem deixar nada; 3) publica no release fixo "windows-latest".
+#
+# Windows e Linux são produtos separados no mesmo código: só vira versão do Windows o commit que
+# começa com "Windows:" (ou "Windows e Linux:"). Os outros compilam e testam, e nada sai.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "packaging/linux/**", ".github/workflows/linux.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: player-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libmpv:
+    name: libmpv LGPL (x64 e ARM64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: libmpv
+          key: libmpv-win-${{ hashFiles('Scripts/libmpv-windows.sh') }}
+
+      - name: Ferramentas (meson, nasm, ffmpeg para o vídeo de teste)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            meson ninja-build nasm pkg-config python3-jinja2 ffmpeg >/dev/null
+
+      - name: Compilar o libmpv-2.dll
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          WORK=$RUNNER_TEMP/lb Scripts/libmpv-windows.sh x64 libmpv/x64
+          WORK=$RUNNER_TEMP/lb Scripts/libmpv-windows.sh arm64 libmpv/arm64
+
+      - name: Vídeo de teste
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=640x360:rate=25 -f lavfi -i sine=frequency=440 -t 6 \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -y libmpv/teste.mp4
+          ls -la libmpv libmpv/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv
+          path: libmpv/
+          retention-days: 7
+
+  build:
+    name: Compilar, testar e montar o instalador (${{ matrix.arch }})
+    needs: libmpv
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            setup: LibertyXPlayer-Setup.exe
+          - arch: arm64
+            runner: windows-11-arm
+            setup: LibertyXPlayer-Setup-arm64.exe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libmpv
+          path: libmpv
+
+      - name: Publicar o executável
+        run: |
+          $sha = "${{ github.sha }}".Substring(0,7)
+          dotnet publish src/LibertyX.Player/LibertyX.Player.csproj -c Release -r win-${{ matrix.arch }} --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none -p:LibertyxCommit=$sha -p:Version=1.0.${{ github.run_number }} -o dist/${{ matrix.arch }} 2>&1 | Tee-Object build.log
+          if (-not (Test-Path dist/${{ matrix.arch }}/LibertyXPlayer.exe)) {
+            $errs = (Select-String -Path build.log -Pattern ' error ' | ForEach-Object { $_.Line } | Sort-Object -Unique | Select-Object -First 20) -join '%0A'
+            Write-Output "::error title=Erros de compilação::$errs"
+            exit 1
+          }
+          Copy-Item libmpv/${{ matrix.arch }}/* dist/${{ matrix.arch }}/
+          Get-ChildItem dist/${{ matrix.arch }} | Format-Table Name, Length
+
+      # O executável é de janela (sem console): o resultado vem só pelo relatório. Cada FALHA vira anotação.
+      - name: Autoteste
+        run: |
+          $p = Start-Process -FilePath dist\${{ matrix.arch }}\LibertyXPlayer.exe -ArgumentList '--autoteste','autoteste.txt','libmpv\teste.mp4' -Wait -PassThru
+          if (-not (Test-Path autoteste.txt)) { Write-Output "::error title=Autoteste ${{ matrix.arch }}::o executável não gerou relatório (código $($p.ExitCode))"; exit 1 }
+          Get-Content autoteste.txt
+          foreach ($f in (Get-Content autoteste.txt | Where-Object { $_ -like 'FALHA*' })) { Write-Output "::error title=Autoteste ${{ matrix.arch }}::$($f -replace '%','%25')" }
+          Write-Output "::notice title=Autoteste ${{ matrix.arch }}::$(Get-Content autoteste.txt | Select-Object -Last 1)"
+          exit $p.ExitCode
+
+      # Instala como a pessoa instalaria (sem administrador, na pasta dela), confere o que ficou,
+      # abre o app instalado, desinstala e confere que nada sobrou — nem o "Abrir com".
+      - name: Montar e testar o instalador
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress *> $null }
+          if (-not (Test-Path $iscc)) {
+            Invoke-WebRequest https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe -OutFile is.exe
+            Start-Process is.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/ALLUSERS' -Wait
+          }
+          & $iscc /Q "/DVersion=1.0.${{ github.run_number }}" "/DArch=${{ matrix.arch }}" packaging\windows\LibertyXPlayer.iss
+          if (-not (Test-Path dist\${{ matrix.setup }})) { Write-Output "::error title=Instalador::o ISCC não gerou o Setup"; exit 1 }
+          Get-Item dist\${{ matrix.setup }} | Format-List Name, Length
+          $p = Start-Process dist\${{ matrix.setup }} -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/TASKS=desktopicon' -Wait -PassThru
+          $dir = "$env:LOCALAPPDATA\Programs\LibertyX Player"
+          $exe = "$dir\LibertyXPlayer.exe"
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\LibertyX Player.lnk"
+          $reg = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -eq 'LibertyX Player' }
+          $abrir = (Get-ItemProperty 'HKCU:\Software\Classes\.mkv\OpenWithProgids' -ErrorAction SilentlyContinue).'LibertyX.Player.Video' -ne $null
+          $cmd = (Get-ItemProperty 'HKCU:\Software\Classes\LibertyX.Player.Video\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
+          $ok = ($p.ExitCode -eq 0) -and (Test-Path $exe) -and (Test-Path "$dir\libmpv-2.dll") -and (Test-Path $menu) -and $reg -and $abrir -and ($cmd -like "*LibertyXPlayer.exe*")
+          Write-Output "::notice title=Instalador ${{ matrix.arch }}::instalou=$($p.ExitCode) exe=$(Test-Path $exe) menu=$(Test-Path $menu) abrir-com=$abrir versão=$($reg.DisplayVersion)"
+          if (-not $ok) { Write-Output "::error title=Instalador ${{ matrix.arch }}::a instalação silenciosa não deixou tudo no lugar (comando: $cmd)"; exit 1 }
+          $t = Start-Process $exe -ArgumentList '--autoteste',"$env:RUNNER_TEMP\inst.txt",'libmpv\teste.mp4' -Wait -PassThru
+          Write-Output "::notice title=App instalado ${{ matrix.arch }}::$(Get-Content $env:RUNNER_TEMP\inst.txt | Select-Object -Last 1)"
+          if ($t.ExitCode -ne 0) { Write-Output "::error title=App instalado::o autoteste do app instalado falhou"; exit 1 }
+          $u = Start-Process $reg.UninstallString.Trim('"') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          Start-Sleep -Seconds 3
+          $sobrou = (Test-Path $exe) -or (Test-Path $menu) -or (Test-Path 'HKCU:\Software\Classes\LibertyX.Player.Video') -or
+            ((Get-ItemProperty 'HKCU:\Software\Classes\.mkv\OpenWithProgids' -ErrorAction SilentlyContinue).'LibertyX.Player.Video' -ne $null)
+          if ($sobrou) { Write-Output "::error title=Instalador ${{ matrix.arch }}::a desinstalação deixou arquivos ou registro"; exit 1 }
+          Write-Output "::notice title=Instalador ${{ matrix.arch }}::desinstalou=$($u.ExitCode), nada sobrou"
+
+      - name: Portátil (.zip)
+        run: |
+          Compress-Archive -Path dist\${{ matrix.arch }}\* -DestinationPath dist\LibertyXPlayer-windows-${{ matrix.arch }}.zip
+          Get-Item dist\*.zip | Format-List Name, Length
+
+      - name: Guardar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            autoteste.txt
+          retention-days: 30
+
+  release:
+    name: Publicar o release "windows-latest"
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base="https://github.com/${{ github.repository }}/releases/download/windows-latest"
+          prev=$(curl -fsSL "$base/versao.txt" 2>/dev/null | sed -n 's/^commit=//p' | head -1 || true)
+          if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
+            subjects=$(git log --pretty=%s "$prev..HEAD")
+          else
+            subjects=$(git log -1 --pretty=%s)
+          fi
+          mine=$(printf '%s\n' "$subjects" | grep -E '^\s*Windows\b' || true)
+          if [ -z "$mine" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "::notice title=Sem versão nova::nenhum commit do Windows desde ${prev:-o início}"
+            exit 0
+          fi
+          novidade=$(printf '%s\n' "${mine:-$(git log -1 --pretty=%s)}" | sed -E 's/^\s*Windows( e Linux)?\s*:\s*//' | paste -sd'·' | sed 's/·/ · /g' | cut -c1-400)
+          ver=1.0.${{ github.run_number }}
+          sha=$(echo "${{ github.sha }}" | cut -c1-7)
+          mkdir -p up
+          cp art/windows-x64/dist/LibertyXPlayer-Setup.exe art/windows-x64/dist/LibertyXPlayer-windows-x64.zip \
+             art/windows-arm64/dist/LibertyXPlayer-Setup-arm64.exe art/windows-arm64/dist/LibertyXPlayer-windows-arm64.zip up/
+          (cd up && sha256sum * > SHA256SUMS)
+          printf 'sistema=windows\nversao=%s\ncommit=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$novidade" > versao.txt
+          notes="**Novidades:** ${novidade}
+
+          | Computador | Baixar |
+          |---|---|
+          | Windows 10/11 (Intel/AMD) — instalar | [LibertyXPlayer-Setup.exe]($base/LibertyXPlayer-Setup.exe) |
+          | Windows 11 ARM (Snapdragon) — instalar | [LibertyXPlayer-Setup-arm64.exe]($base/LibertyXPlayer-Setup-arm64.exe) |
+          | Portátil, sem instalar | [x64]($base/LibertyXPlayer-windows-x64.zip) · [ARM64]($base/LibertyXPlayer-windows-arm64.zip) |
+
+          Versão $ver, compilada de $sha e aprovada no autoteste e na instalação num Windows x64 e num ARM64.
+          O libmpv-2.dll (mpv + FFmpeg em LGPL) é compilado pelo \`Scripts/libmpv-windows.sh\` deste repositório."
+          # o release nunca é apagado: sobe por cima, e o versao.txt por último
+          if ! gh release view windows-latest >/dev/null 2>&1; then
+            gh release create windows-latest --target "${{ github.sha }}" --title "LibertyX Player $ver (Windows)" --notes "$notes" --latest=false
+          fi
+          git tag -f windows-latest "${{ github.sha }}" && git push -f origin refs/tags/windows-latest
+          gh release upload windows-latest up/* --clobber
+          gh release edit windows-latest --title "LibertyX Player $ver (Windows)" --notes "$notes" --latest=false
+          gh release upload windows-latest versao.txt --clobber
+          echo "::notice title=Publicado::LibertyX Player $ver (Windows) — $novidade"

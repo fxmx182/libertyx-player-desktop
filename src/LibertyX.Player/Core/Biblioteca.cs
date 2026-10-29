@@ -67,16 +67,38 @@ public static class Biblioteca
     public static List<string> Raizes()
     {
         var l = new List<string> { Caminhos.Videos };
-        if (Caminhos.PastaXdg("XDG_DOWNLOAD_DIR") is { } d) l.Add(d); else l.Add(Path.Combine(Caminhos.Home, "Downloads"));
+        if (OperatingSystem.IsWindows()) l.Add(Caminhos.DownloadsWindows);
+        else if (Caminhos.PastaXdg("XDG_DOWNLOAD_DIR") is { } d) l.Add(d); else l.Add(Path.Combine(Caminhos.Home, "Downloads"));
         l.AddRange(Prefs.Atual.Pastas);
         l.AddRange(Removiveis());
+        if (OperatingSystem.IsWindows())
+        {
+            // "E:\" fica "E:\" (sem a barra, "E:" seria a pasta atual do drive); maiúscula/minúscula não contam
+            var win = l.Where(Directory.Exists).Select(p => Path.GetFullPath(p))
+                .Select(p => p.Length > (Path.GetPathRoot(p)?.Length ?? 0) ? p.TrimEnd('\\') : p)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return win.Where(p => !win.Any(o => !o.Equals(p, StringComparison.OrdinalIgnoreCase)
+                && p.StartsWith(o.EndsWith('\\') ? o : o + "\\", StringComparison.OrdinalIgnoreCase))).ToList();
+        }
         var unicas = l.Where(Directory.Exists).Select(p => Path.GetFullPath(p).TrimEnd('/')).Distinct().ToList();
         return unicas.Where(p => !unicas.Any(o => o != p && p.StartsWith(o + "/"))).ToList();
     }
 
-    /// <summary>Pendrives e HDs que o desktop montou para o usuário.</summary>
+    /// <summary>Pendrives e HDs que o desktop montou para o usuário. No Windows: os outros drives (D:, E:,
+    /// pendrive) — o C: inteiro não, que é o sistema; dele entram só as pastas do usuário.</summary>
     public static IEnumerable<string> Removiveis()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            string sistema = Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
+            foreach (var di in DriveInfo.GetDrives())
+            {
+                bool ok;
+                try { ok = di.IsReady && di.DriveType is DriveType.Fixed or DriveType.Removable; } catch { continue; }
+                if (ok && !di.Name.Equals(sistema, StringComparison.OrdinalIgnoreCase)) yield return di.Name;
+            }
+            yield break;
+        }
         string user = Environment.UserName;
         foreach (var b in new[] { $"/media/{user}", $"/run/media/{user}" })
         {
@@ -115,6 +137,9 @@ public static class Biblioteca
             {
                 var nome = Path.GetFileName(d);
                 if (nome.StartsWith('.') || nome is "node_modules" or "$RECYCLE.BIN" or "System Volume Information" or "lost+found") continue;
+                // no Windows as pastas do sistema se escondem pelo atributo, não pelo ponto
+                if (OperatingSystem.IsWindows() && (nome is "Windows" or "Program Files" or "Program Files (x86)" or "ProgramData" or "$WinREAgent"
+                    || (File.GetAttributes(d) & (FileAttributes.Hidden | FileAttributes.System)) != 0)) continue;
                 if (new DirectoryInfo(d).LinkTarget != null) continue;   // links não: evitam laço e repetição
                 Andar(d, nivel + 1, saida, ct);
             }

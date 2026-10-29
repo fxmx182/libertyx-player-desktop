@@ -27,6 +27,17 @@ public sealed unsafe class MpvGlView : OpenGlControlBase
     public event Action? Pronto;
     public string? Falha { get; private set; }
 
+    /// <summary>O OpenGL quebrou ao desenhar (Windows: ANGLE sem textura compartilhada — driver antigo,
+    /// área de trabalho remota, Wine). Daí em diante o vídeo é sempre por software.</summary>
+    public static string? Quebrado { get; private set; }
+    public static event Action? AoQuebrar;
+    public static void Quebrar(string motivo)
+    {
+        if (Quebrado != null) return;
+        Quebrado = motivo;
+        AoQuebrar?.Invoke();
+    }
+
     public MpvCore? Core
     {
         get => _core;

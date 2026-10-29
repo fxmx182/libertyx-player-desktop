@@ -6,7 +6,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <!-- só Linux: as APIs de arquivo Unix são usadas sem guarda de plataforma -->
+    <!-- Linux e Windows no mesmo código: o que é de um sistema só fica atrás de OperatingSystem.IsX() -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <SatelliteResourceLanguages>pt-BR;es</SatelliteResourceLanguages>
     <!-- o commit vai no rodapé de Ajustes › Sobre: sem ele não dá para saber qual build está instalado -->
@@ -15,6 +15,10 @@
   <!-- build desta máquina = o do dono, com o Pro liberado (como o dist/ do Android); CI = travado -->
   <PropertyGroup Condition="'$(CI)' == '' And '$(LibertyxLoja)' != 'true'">
     <DefineConstants>$(DefineConstants);LIBERADO</DefineConstants>
+  </PropertyGroup>
+  <!-- Windows: o ícone do .exe (Explorer, barra de tarefas); gerado por Scripts/instalador.py -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
+    <ApplicationIcon>..\..\packaging\windows\app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />

@@ -1,9 +1,13 @@
-# LibertyX Player — Linux
+# LibertyX Player — Windows e Linux
 
-**Baixar:** [.deb (Debian, Ubuntu, Mint)](https://github.com/fxmx182/libertyx-player-linux/releases/latest/download/libertyx-player_amd64.deb)
-· [.rpm (Fedora, openSUSE)](https://github.com/fxmx182/libertyx-player-linux/releases/latest/download/libertyx-player.x86_64.rpm)
-· [.tar.gz](https://github.com/fxmx182/libertyx-player-linux/releases/latest/download/LibertyXPlayer-linux.tar.gz)
-· [ARM64 e todos os arquivos](https://github.com/fxmx182/libertyx-player-linux/releases/latest)
+**Windows:** [instalador (Windows 10/11)](https://github.com/fxmx182/libertyx-player-desktop/releases/download/windows-latest/LibertyXPlayer-Setup.exe)
+· [ARM64 (Snapdragon)](https://github.com/fxmx182/libertyx-player-desktop/releases/download/windows-latest/LibertyXPlayer-Setup-arm64.exe)
+· [portátil e todos os arquivos](https://github.com/fxmx182/libertyx-player-desktop/releases/tag/windows-latest)
+
+**Linux:** [.deb (Debian, Ubuntu, Mint)](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/libertyx-player_amd64.deb)
+· [.rpm (Fedora, openSUSE)](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/libertyx-player.x86_64.rpm)
+· [.tar.gz](https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download/LibertyXPlayer-linux.tar.gz)
+· [ARM64 e todos os arquivos](https://github.com/fxmx182/libertyx-player-desktop/releases/latest)
 
 O mesmo player do Android e do iPhone, no desktop. Mesmo nome, mesma biblioteca com capas e
 "continuar assistindo", mesma rolagem quadro a quadro, mesmas pastas da rede (SMB) — e o mesmo
@@ -19,9 +23,48 @@ Os irmãos usam o libVLC. Aqui o motor é o **libmpv**, por duas razões que só
 | **Rolagem quadro a quadro** | `setTime` exato, mas lento em arquivo grande | `hr-seek` é o caso de uso principal do mpv; buscas acumuladas durante o arraste são fundidas |
 | **SMB** | tem `smb://`, mas a senha na URL é descartada (a armadilha do Android) | o app entrega os bytes pelo `stream_cb` do libmpv: `lxsmb://`, com o SMBLibrary (C# puro), sem senha no endereço |
 
-O libmpv é o **da distribuição** (dependência do .deb/.rpm): o app não leva FFmpeg nem mpv dentro.
-Isso deixa o pacote pequeno, recebe as correções de segurança do sistema e não redistribui código
-GPL junto com o app.
+No Linux o libmpv é o **da distribuição** (dependência do .deb/.rpm): o app não leva FFmpeg nem mpv
+dentro. Isso deixa o pacote pequeno, recebe as correções de segurança do sistema e não redistribui
+código GPL junto com o app.
+
+## Windows e Linux no mesmo código
+
+Uma base só, como no Partition: tudo que é de um sistema fica atrás de `OperatingSystem.IsWindows()`
+(o pouco de API do Windows está em `Core/Win.cs`) e **mudança feita para um sistema nunca altera o
+outro**. Cada um tem seu CI e seu release:
+
+| | Windows | Linux |
+|---|---|---|
+| CI | `.github/workflows/windows.yml` (x64 e ARM64, Windows de verdade) | `.github/workflows/linux.yml` |
+| Release | `windows-latest` (fixo, atualizado por cima) | `v1.0.N-…`, marcado latest |
+| Sai versão quando o commit começa com | `Windows:` ou `Windows e Linux:` | `Linux:` ou `Windows e Linux:` |
+
+Commit sem um desses prefixos (CI, testes, documentação) compila e testa os dois, e nenhuma versão sai.
+
+O que muda no Windows:
+
+- **O libmpv vai junto** (`libmpv-2.dll` ao lado do .exe): no Windows não há mpv do sistema, e as
+  builds prontas saem em GPL. `Scripts/libmpv-windows.sh` compila do Linux, com o llvm-mingw, o mpv
+  com `-Dgpl=false` e o FFmpeg sem `--enable-gpl` (mais libplacebo, libass, dav1d, FreeType,
+  HarfBuzz, FriBidi, zlib — todos LGPL ou mais livres), estáticos dentro de uma DLL que só depende
+  do que o Windows já tem. O CI guarda a DLL em cache enquanto o script não mudar. Sem Lua: os
+  sites de vídeo pelo `yt-dlp` ficam só no Linux.
+- **Vídeo**: o Avalonia desenha por ANGLE (OpenGL ES sobre Direct3D 11) e o mpv desenha dentro dele.
+  Se o OpenGL quebrar ao desenhar (driver antigo, área de trabalho remota, Wine), o app não fecha:
+  passa para o vídeo por software. `LIBERTYX_GL=wgl` troca pelo OpenGL do driver, para comparar.
+- **Biblioteca**: Vídeos e Downloads do usuário (pastas conhecidas, mesmo se mudadas de lugar) e os
+  outros drives (D:, E:, pendrives) — o C: inteiro não, que é o sistema.
+- **Rede**: sem avahi; a varredura da porta 445 acha os servidores e o nome vem pelo NetBIOS/LLMNR.
+  Adaptadores virtuais (Hyper-V, WSL, VirtualBox, VMware) ficam de fora.
+- **Tela acesa** com `SetThreadExecutionState`; **escala** da interface vem do próprio Windows.
+- **Instalador** Inno Setup (`packaging/windows/LibertyXPlayer.iss`): instala sem administrador (ou
+  para todos, se a pessoa escolher), em inglês/português/espanhol, e registra o app no "Abrir com" de
+  cada tipo de vídeo e em Aplicativos padrão — o Windows 10/11 não deixa app nenhum se fazer padrão
+  sozinho. O CI instala em silêncio, confere, abre o app instalado, desinstala e confere que nada
+  sobrou. Artes e ícone: `Scripts/instalador.py`.
+- Dados em `%APPDATA%\LibertyX Player` e `%LOCALAPPDATA%\LibertyX Player\Cache` (diário, miniaturas).
+- Teste local sem Windows: o .exe roda no **Wine** (autoteste e janela; o ANGLE do Wine não
+  compartilha textura, então ali o vídeo sai sempre pelo caminho por software).
 
 ## O que tem
 
@@ -88,6 +131,15 @@ cd src/LibertyX.Player && dotnet build -r linux-x64 --no-self-contained
 `-r linux-x64` importa: sem ele a ICU embutida não entra e o app fecha em distribuição sem libicu.
 Precisa do `libmpv2` instalado para rodar.
 
+Windows, daqui mesmo do Linux:
+
+```bash
+Scripts/libmpv-windows.sh x64 dist/win-x64     # ~10 min na primeira vez; precisa de meson, nasm, gcc
+dotnet publish src/LibertyX.Player -c Release -r win-x64 --self-contained -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true -o dist/win-x64
+wine dist/win-x64/LibertyXPlayer.exe --autoteste r.txt video.mp4
+```
+
 - `LibertyXPlayer --autoteste relatorio.txt video.mp4`: sem tela; carrega o libmpv, abre o vídeo,
   desenha um quadro na memória e confere que não saiu preto, recusa chave falsa, confere os idiomas.
   O CI roda no executável publicado, no .deb instalado (Ubuntu 24.04), no .rpm (Fedora 41) e no
@@ -121,10 +173,12 @@ src/LibertyX.Player/
   Mpv/      LibMpv (P/Invoke), MpvCore (opções, comandos, eventos), MpvGlView/MpvSwView,
             Miniaturas (mpv sem tela, render "sw"), SmbStream (lxsmb:// pelo stream_cb)
   Rede/     Smb (servidores salvos, conexão SMBLibrary), Descoberta (avahi + porta 445)
-  Core/     Prefs, Textos (+ Tabelas en/es), Pro/Chave, Biblioteca, Escala, Diario
+  Core/     Prefs, Textos (+ Tabelas en/es), Pro/Chave, Biblioteca, Escala (só Linux), Win (só Windows), Diario
   Views/    MainWindow, BibliotecaView, PlayerView (+ BarraDeTempo), RedeView, AjustesView/ProDialogo
 packaging/linux/   .desktop, metainfo, empacotar.sh (.deb, .rpm, .tar.gz), ícones
-Scripts/   marca.py (símbolo e ícones a partir do vetor do Android), textos.py
+packaging/windows/ LibertyXPlayer.iss (Inno Setup), app.ico, artes do instalador
+Scripts/   marca.py (símbolo e ícones a partir do vetor do Android), textos.py,
+           libmpv-windows.sh (libmpv-2.dll LGPL), instalador.py (ícone e artes do Windows)
 ```
 
 As telas são montadas em código (`Views/Ui.cs` tem os atalhos); o XAML é só o tema, em `App.axaml`.

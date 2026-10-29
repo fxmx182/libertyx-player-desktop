@@ -18,9 +18,20 @@ internal static class Program
             return;
         }
         Textos.Iniciar(Prefs.Atual.Idioma);
-        Escala.Aplicar(Prefs.Atual.Escala);
+        if (!OperatingSystem.IsWindows()) Escala.Aplicar(Prefs.Atual.Escala);
         Pro.Iniciar();
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        var app = BuildAvaloniaApp();
+        // (depois do Setup: tocar no Dispatcher antes cria um sem a plataforma e o app não abre)
+        if (OperatingSystem.IsWindows())
+            app = app.AfterSetup(_ => Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, e) =>
+            {
+                // o OpenGL do vídeo quebrando ao desenhar não fecha o app: o player passa a desenhar por software
+                if (e.Exception.StackTrace?.Contains("OpenGlControlBase") != true) return;
+                e.Handled = true;
+                Diario.Erro(e.Exception);
+                Mpv.MpvGlView.Quebrar(e.Exception.Message);
+            });
+        app.StartWithClassicDesktopLifetime(args);
     }
 
     public static AppBuilder BuildAvaloniaApp()
@@ -32,6 +43,14 @@ internal static class Program
                 WmClass = "libertyx-player",
                 // LIBERTYX_LLVMPIPE=1: aceita o OpenGL por software do Mesa (testes no Xvfb); o Avalonia o recusa por padrão
                 GlxRendererBlacklist = Environment.GetEnvironmentVariable("LIBERTYX_LLVMPIPE") == "1" ? [] : ["llvmpipe"],
+            })
+            .With(new Win32PlatformOptions
+            {
+                // Windows: o padrão do Avalonia é o ANGLE (OpenGL ES sobre Direct3D 11), que o mpv conhece;
+                // LIBERTYX_GL=wgl troca pelo OpenGL do driver, para comparar se uma placa der problema
+                RenderingMode = Environment.GetEnvironmentVariable("LIBERTYX_GL") == "wgl"
+                    ? [Win32RenderingMode.Wgl, Win32RenderingMode.AngleEgl, Win32RenderingMode.Software]
+                    : [Win32RenderingMode.AngleEgl, Win32RenderingMode.Wgl, Win32RenderingMode.Software],
             });
         // LIBERTYX_LOG=1: o diário do Avalonia no terminal (escolha de OpenGL, janelas)
         return Environment.GetEnvironmentVariable("LIBERTYX_LOG") == "1"

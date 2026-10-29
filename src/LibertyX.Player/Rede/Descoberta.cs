@@ -23,7 +23,8 @@ public static class Descoberta
             lock (trava) { if (!vistos.Add(a.Endereco)) return; }
             achou(a);
         }
-        await Task.WhenAll(Avahi(Novo, ct), Varrer(Novo, ct));
+        // no Windows não há avahi; o nome vem pelo NetBIOS/LLMNR na resolução reversa da varredura
+        await Task.WhenAll(OperatingSystem.IsWindows() ? Task.CompletedTask : Avahi(Novo, ct), Varrer(Novo, ct));
     }
 
     private static async Task Avahi(Action<Achado> achou, CancellationToken ct)
@@ -68,6 +69,8 @@ public static class Descoberta
             if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
             // redes virtuais do próprio computador (docker, VMs) não têm servidor de ninguém
             if (ni.Name.StartsWith("docker") || ni.Name.StartsWith("br-") || ni.Name.StartsWith("veth") || ni.Name.StartsWith("virbr")) continue;
+            if (OperatingSystem.IsWindows() && (ni.Name.StartsWith("vEthernet") || ni.Description.Contains("Hyper-V")
+                || ni.Description.Contains("VirtualBox") || ni.Description.Contains("VMware") || ni.Description.Contains("WSL"))) continue;
             foreach (var a in ni.GetIPProperties().UnicastAddresses)
             {
                 if (a.Address.AddressFamily != AddressFamily.InterNetwork || a.PrefixLength < 16) continue;

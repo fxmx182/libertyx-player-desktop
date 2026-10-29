@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace LibertyX.Player.Core;
 
-/// <summary>Onde o app guarda as coisas, pelo padrão XDG (~/.config, ~/.cache).</summary>
+/// <summary>Onde o app guarda as coisas: no Linux pelo padrão XDG (~/.config, ~/.cache); no Windows em
+/// %APPDATA%\LibertyX Player e %LOCALAPPDATA%\LibertyX Player\Cache.</summary>
 public static class Caminhos
 {
     public static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -11,13 +12,18 @@ public static class Caminhos
     private static string Xdg(string var, string padrao) =>
         Environment.GetEnvironmentVariable(var) is { Length: > 0 } v && Path.IsPathRooted(v) ? v : Path.Combine(Home, padrao);
 
-    public static string Config => Dir(Path.Combine(Xdg("XDG_CONFIG_HOME", ".config"), "libertyx-player"));
-    public static string Cache => Dir(Path.Combine(Xdg("XDG_CACHE_HOME", ".cache"), "libertyx-player"));
+    public static string Config => OperatingSystem.IsWindows()
+        ? Dir(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LibertyX Player"))
+        : Dir(Path.Combine(Xdg("XDG_CONFIG_HOME", ".config"), "libertyx-player"));
+    public static string Cache => OperatingSystem.IsWindows()
+        ? Dir(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LibertyX Player", "Cache"))
+        : Dir(Path.Combine(Xdg("XDG_CACHE_HOME", ".cache"), "libertyx-player"));
     public static string Miniaturas => Dir(Path.Combine(Cache, "miniaturas"));
 
     /// <summary>A pasta "Vídeos" do usuário, do jeito que o desktop a chama (user-dirs.dirs).</summary>
     public static string? PastaXdg(string chave)
     {
+        if (OperatingSystem.IsWindows()) return null;
         try
         {
             var f = Path.Combine(Xdg("XDG_CONFIG_HOME", ".config"), "user-dirs.dirs");
@@ -33,8 +39,12 @@ public static class Caminhos
         return null;
     }
 
-    public static string Videos => PastaXdg("XDG_VIDEOS_DIR") ?? Path.Combine(Home, "Videos");
-    public static string Imagens => PastaXdg("XDG_PICTURES_DIR") ?? Path.Combine(Home, "Pictures");
+    public static string Videos => OperatingSystem.IsWindows() ? Environment.GetFolderPath(Environment.SpecialFolder.MyVideos)
+        : PastaXdg("XDG_VIDEOS_DIR") ?? Path.Combine(Home, "Videos");
+    public static string Imagens => OperatingSystem.IsWindows() ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+        : PastaXdg("XDG_PICTURES_DIR") ?? Path.Combine(Home, "Pictures");
+    /// <summary>Downloads do Windows: é uma "pasta conhecida" que a pessoa pode ter mudado de lugar.</summary>
+    public static string DownloadsWindows => Win.PastaConhecida(Win.Downloads) ?? Path.Combine(Home, "Downloads");
 
     private static string Dir(string d) { Directory.CreateDirectory(d); return d; }
 }

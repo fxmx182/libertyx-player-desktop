@@ -42,7 +42,7 @@ Precisa do libmpv da sua distribuição:
   sudo pacman -S mpv              # Arch, Manjaro
   sudo zypper install libmpv2     # openSUSE
 Instalar de verdade (menu, "Abrir com" nos vídeos): prefira o .deb ou o .rpm em
-https://github.com/fxmx182/libertyx-player-linux/releases/latest
+https://github.com/fxmx182/libertyx-player-desktop/releases/latest
 TXT
 tar -C "$TMP/tar" -czf "$OUT/LibertyXPlayer-linux${SUF}.tar.gz" libertyx-player
 

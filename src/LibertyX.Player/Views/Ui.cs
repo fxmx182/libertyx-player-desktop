@@ -145,6 +145,12 @@ public static class Ui
 
     public static void Abrir(string url)
     {
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("xdg-open", url) { UseShellExecute = false }); } catch { }
+        try
+        {
+            System.Diagnostics.Process.Start(OperatingSystem.IsWindows()
+                ? new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }
+                : new System.Diagnostics.ProcessStartInfo("xdg-open", url) { UseShellExecute = false });
+        }
+        catch { }
     }
 }

@@ -29,10 +29,14 @@ public sealed class AjustesView : ScrollViewer
         _corpo.Children.Clear();
         _corpo.Children.Add(Ui.Linha(S("Ajustes"), 26, FontWeight.ExtraBold));
         _corpo.Children.Add(CartaoPro());
-        _corpo.Children.Add(Secao(S("Aparência"), Linha(S("Idioma"), Idioma()), Linha(S("Tamanho da interface"), Escala())));
+        // no Windows o tamanho vem da escala do próprio sistema (Configurações › Tela)
+        _corpo.Children.Add(OperatingSystem.IsWindows() ? Secao(S("Aparência"), Linha(S("Idioma"), Idioma()))
+            : Secao(S("Aparência"), Linha(S("Idioma"), Idioma()), Linha(S("Tamanho da interface"), Escala())));
         _corpo.Children.Add(Secao(S("Biblioteca"), Pastas()));
         _corpo.Children.Add(Secao(S("Reprodução"),
-            Chave(S("Decodificação por hardware"), S("Usa a placa de vídeo (VA-API, NVDEC) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo."),
+            Chave(S("Decodificação por hardware"), OperatingSystem.IsWindows()
+                    ? S("Usa a placa de vídeo (D3D11, DXVA2) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo.")
+                    : S("Usa a placa de vídeo (VA-API, NVDEC) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo."),
                 Prefs.Atual.Decodificacao, v => { Prefs.Atual.Decodificacao = v; App.Mpv?.SetString("hwdec", v ? "auto-safe" : "no"); }),
             Chave(S("Rolagem quadro a quadro"), S("Ao arrastar, mostra o quadro exato debaixo do mouse. Desligada, pula de quadro-chave em quadro-chave (mais leve em vídeo 4K)."),
                 Prefs.Atual.RolagemExata, v => Prefs.Atual.RolagemExata = v),
@@ -216,7 +220,9 @@ public static class ProDialogo
             p.Children.Add(linha);
         }
         p.Children.Add(Ui.Texto(S("Todo o resto é grátis para sempre: biblioteca, player, rolagem quadro a quadro, legendas e faixas de áudio."), 12, FontWeight.Normal, "tenue"));
-        p.Children.Add(Ui.Texto(F("Pagamento único de {0}, sem assinatura. A mesma chave vale no Android, na TV e no Linux.", Pro.Preco), 12, FontWeight.Normal, "tenue"));
+        p.Children.Add(Ui.Texto(OperatingSystem.IsWindows()
+            ? F("Pagamento único de {0}, sem assinatura. A mesma chave vale no Android, na TV, no Linux e no Windows.", Pro.Preco)
+            : F("Pagamento único de {0}, sem assinatura. A mesma chave vale no Android, na TV e no Linux.", Pro.Preco), 12, FontWeight.Normal, "tenue"));
         var comprar = Ui.Botao(null, null, "ouro", () => Ui.Abrir(Pro.BotTelegram));
         comprar.HorizontalAlignment = HorizontalAlignment.Stretch;
         comprar.Content = Ui.Pilha(1, Orientation.Vertical, Ui.Texto(S("Pagar com Bitcoin ou USDT"), 15, FontWeight.ExtraBold),

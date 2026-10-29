@@ -2,12 +2,15 @@ name: LibertyX Player (Linux)
 
 # Cada arquitetura compila no próprio runner (x64 e ARM64 são grátis em repositório público),
 # roda o autoteste sem tela (libmpv do sistema, um vídeo gerado na hora, quadro desenhado na
-# memória), empacota, prova que o .deb e o .rpm instalam e abrem, e publica um release novo a
-# cada push — marcado latest, para o link /releases/latest/download/<arquivo> nunca mudar.
+# memória), empacota, prova que o .deb e o .rpm instalam e abrem, e publica um release novo —
+# marcado latest, para o link /releases/latest/download/<arquivo> nunca mudar.
+#
+# Windows e Linux são produtos separados no mesmo código: só vira versão do Linux o commit que
+# começa com "Linux:" (ou "Windows e Linux:"). Os outros compilam e testam, e nada sai.
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["**.md", "packaging/windows/**", ".github/workflows/windows.yml", "Scripts/libmpv-windows.sh", "Scripts/instalador.py"]
   workflow_dispatch:
 
 concurrency:
@@ -109,6 +112,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: art
@@ -116,13 +121,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prev=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/versao.txt" 2>/dev/null | sed -n 's/^commit=//p' | head -1 || true)
+          if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
+            subjects=$(git log --pretty=%s "$prev..HEAD")
+          else
+            subjects=$(git log -1 --pretty=%s)
+          fi
+          if ! printf '%s\n' "$subjects" | grep -qE '^\s*(Linux|Windows e Linux)\b' && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "::notice title=Sem versão nova::nenhum commit do Linux desde ${prev:-o início}"
+            exit 0
+          fi
           mkdir -p up
           cp art/linux-x64/pacotes/* art/linux-arm64/pacotes/* up/
           (cd up && sha256sum * > SHA256SUMS)
           ver=1.0.${{ github.run_number }}
           sha=$(echo "${{ github.sha }}" | cut -c1-7)
           tag="v${ver}-$(date -u +%Y%m%d)-${sha}"
-          msg=$(git log -1 --pretty=%s | cut -c1-300)
+          msg=$( (printf '%s\n' "$subjects" | grep -E '^\s*(Linux|Windows e Linux)\b' || git log -1 --pretty=%s) | sed -E 's/^\s*(Windows e )?Linux\s*:\s*//' | paste -sd'·' | sed 's/·/ · /g' | cut -c1-300)
           printf 'versao=%s\ncommit=%s\n' "$ver" "${{ github.sha }}" > up/versao.txt
           notes="**${msg}**
 
@@ -132,5 +147,5 @@ jobs:
           | Fedora, openSUSE | \`libertyx-player.x86_64.rpm\` (ARM: \`.aarch64.rpm\`) |
           | Qualquer outra | \`LibertyXPlayer-linux.tar.gz\` + o libmpv da distribuição |"
           gh release create "$tag" up/* --title "LibertyX Player $ver (Linux)" --notes "$notes" --latest
-          # poda: os 10 últimos bastam
-          gh release list --limit 100 --json tagName --jq '.[10:][].tagName' | while read -r t; do gh release delete "$t" --yes --cleanup-tag; done
+          # poda: os 10 últimos do Linux bastam (o "windows-latest" não entra na conta)
+          gh release list --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("v"))][10:][].tagName' | while read -r t; do gh release delete "$t" --yes --cleanup-tag; done

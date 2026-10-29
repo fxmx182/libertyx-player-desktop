@@ -26,6 +26,7 @@ public sealed class PlayerView : Grid
     private readonly MpvCore _mpv;
     private Control _video;
     private readonly Action<MpvEvento> _aoEvento;
+    private readonly Action _aoQuebrar;
     private readonly Border _escuro, _hud, _topo, _baixo, _painel, _retomar, _carregando;
     private readonly TextBlock _hudTexto, _titulo, _tempo, _total, _carregandoTexto;
     private readonly BarraDeTempo _barra;
@@ -65,7 +66,7 @@ public sealed class PlayerView : Grid
         Focusable = true;
 
         // ── o vídeo ──
-        if (Environment.GetEnvironmentVariable("LIBERTYX_SW") == "1") { _video = new MpvSwView { Core = mpv }; _videoPronto = true; }
+        if (Environment.GetEnvironmentVariable("LIBERTYX_SW") == "1" || MpvGlView.Quebrado != null) { _video = new MpvSwView { Core = mpv }; _videoPronto = true; }
         else
         {
             var gl = new MpvGlView { Core = mpv };
@@ -207,6 +208,9 @@ public sealed class PlayerView : Grid
 
         PointerMoved += (_, _) => Mexeu();
         AttachedToVisualTree += (_, _) => ConferirVideo();
+        // (o OpenGL pode quebrar depois de abrir: a troca vale mesmo com Iniciou)
+        _aoQuebrar = () => Dispatcher.UIThread.Post(() => { if (_video is MpvGlView g) TrocarPorSoftware(g); });
+        MpvGlView.AoQuebrar += _aoQuebrar;
         _aoEvento = e => Dispatcher.UIThread.Post(() => AoEvento(e));
         _mpv.Evento += _aoEvento;
         // o que o mpv avisou antes desta tela existir
@@ -218,6 +222,7 @@ public sealed class PlayerView : Grid
     public void Desligar()
     {
         _mpv.Evento -= _aoEvento;
+        MpvGlView.AoQuebrar -= _aoQuebrar;
         if (_video is MpvGlView gl) gl.Liberar();
         if (_video is MpvSwView sw) sw.Liberar();
     }
@@ -232,21 +237,27 @@ public sealed class PlayerView : Grid
         DispatcherTimer.RunOnce(() =>
         {
             if (_video is not MpvGlView g || g.Iniciou) return;
-            Diario.Escrever("OpenGL não abriu" + (g.Falha != null ? $" ({g.Falha})" : "") + ": vídeo por software");
-            g.Liberar();
-            int i = Children.IndexOf(g);
-            Children.RemoveAt(i);
-            _video = new MpvSwView { Core = _mpv };
-            Children.Insert(i, _video);
-            if (_esperando != null) { VideoPronto(); return; }
-            _videoPronto = true;
-            // com um vídeo já aberto sem imagem, reabre no mesmo ponto
-            if (_atual != null)
-            {
-                _mpv.SetString("start", _pos.ToString("0.###", CultureInfo.InvariantCulture));
-                _mpv.Command("loadfile", _atual.Endereco, "replace");
-            }
+            TrocarPorSoftware(g);
         }, TimeSpan.FromMilliseconds(1500));
+    }
+
+    private void TrocarPorSoftware(MpvGlView g)
+    {
+        var motivo = g.Falha ?? MpvGlView.Quebrado;
+        Diario.Escrever("OpenGL não abriu" + (motivo != null ? $" ({motivo})" : "") + ": vídeo por software");
+        g.Liberar();
+        int i = Children.IndexOf(g);
+        Children.RemoveAt(i);
+        _video = new MpvSwView { Core = _mpv };
+        Children.Insert(i, _video);
+        if (_esperando != null) { VideoPronto(); return; }
+        _videoPronto = true;
+        // com um vídeo já aberto sem imagem, reabre no mesmo ponto
+        if (_atual != null)
+        {
+            _mpv.SetString("start", _pos.ToString("0.###", CultureInfo.InvariantCulture));
+            _mpv.Command("loadfile", _atual.Endereco, "replace");
+        }
     }
 
     /// <summary>As opções e propriedades que o player observa (uma vez, ao criar o mpv).</summary>
@@ -996,11 +1007,13 @@ public sealed class PlayerView : Grid
 
     private bool _inibido;
 
-    /// <summary>Filme tocando não deixa a tela apagar (xdg-screensaver, que fala com GNOME, KDE, Xfce…).</summary>
+    /// <summary>Filme tocando não deixa a tela apagar (xdg-screensaver, que fala com GNOME, KDE, Xfce…;
+    /// no Windows, SetThreadExecutionState na linha da interface).</summary>
     private void Inibir(bool sim)
     {
         if (sim == _inibido) return;
         _inibido = sim;
+        if (OperatingSystem.IsWindows()) { Win.TelaAcesa(sim); return; }
         try
         {
             if (Janela()?.TryGetPlatformHandle()?.Handle is not { } h || h == IntPtr.Zero) return;

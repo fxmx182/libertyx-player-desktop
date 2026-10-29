@@ -3,8 +3,10 @@ using System.Runtime.InteropServices;
 namespace LibertyX.Player.Mpv;
 
 /// <summary>
-/// A API C do libmpv, só o que o app usa. O app não leva o mpv dentro dos pacotes .deb/.rpm: usa o
-/// do sistema (libmpv2 no Debian/Ubuntu/Fedora; libmpv1 no Ubuntu 22.04 — a API que usamos é a mesma).
+/// A API C do libmpv, só o que o app usa. No Linux o app não leva o mpv dentro dos pacotes .deb/.rpm:
+/// usa o do sistema (libmpv2 no Debian/Ubuntu/Fedora; libmpv1 no Ubuntu 22.04 — a API que usamos é a
+/// mesma). No Windows não há mpv do sistema: o libmpv-2.dll (LGPL, Scripts/libmpv-windows.sh) vai ao
+/// lado do executável.
 /// </summary>
 public static unsafe class LibMpv
 {
@@ -16,6 +18,12 @@ public static unsafe class LibMpv
         NativeLibrary.SetDllImportResolver(typeof(LibMpv).Assembly, (name, asm, path) =>
         {
             if (name != Lib) return IntPtr.Zero;
+            if (OperatingSystem.IsWindows())
+            {
+                foreach (var cand in new[] { "libmpv-2.dll", "mpv-2.dll" })
+                    if (NativeLibrary.TryLoad(Path.Combine(AppContext.BaseDirectory, cand), out var w)) return w;
+                return IntPtr.Zero;
+            }
             foreach (var cand in new[] { "libmpv.so.2", "libmpv.so.1", "libmpv.so" })
                 if (NativeLibrary.TryLoad(cand, asm, path, out var h)) return h;
             return IntPtr.Zero;
@@ -116,10 +124,12 @@ public static unsafe class LibMpv
 
     [DllImport(Lib)] public static extern int mpv_stream_cb_add_ro(IntPtr ctx, byte* protocol, IntPtr userData, delegate* unmanaged<IntPtr, byte*, StreamCbInfo*, int> open);
 
-    /// <summary>O mpv recusa abrir com LC_NUMERIC diferente de "C" (vírgula decimal quebraria as opções).</summary>
+    /// <summary>O mpv recusa abrir com LC_NUMERIC diferente de "C" (vírgula decimal quebraria as opções).
+    /// No Windows o .NET não mexe na localidade do C, que já começa em "C".</summary>
     [DllImport("libc", EntryPoint = "setlocale")] private static extern IntPtr setlocale(int category, byte* locale);
     public static void LocaleC()
     {
+        if (OperatingSystem.IsWindows()) return;
         var c = Utf8("C");
         try { setlocale(1 /* LC_NUMERIC */, (byte*)c); } catch { } finally { Marshal.FreeCoTaskMem(c); }
     }

@@ -58,7 +58,8 @@ public static class Servidores
         {
             var tmp = Arquivo + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(Lista, new JsonSerializerOptions { WriteIndented = true }));
-            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            // no Windows o %APPDATA% já é só do usuário
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             File.Move(tmp, Arquivo, true);
         }
         catch (Exception e) { Diario.Erro(e); }
