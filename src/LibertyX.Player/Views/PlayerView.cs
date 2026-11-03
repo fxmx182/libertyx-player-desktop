@@ -29,7 +29,7 @@ public sealed class PlayerView : Grid
     private Control _video;
     private readonly Action<MpvEvento> _aoEvento;
     private readonly Action _aoQuebrar;
-    private readonly Border _escuro, _hud, _topo, _baixo, _painel, _retomar, _carregando;
+    private readonly Border _cortina, _escuro, _hud, _topo, _baixo, _painel, _retomar, _carregando;
     private readonly TextBlock _hudTexto, _titulo, _tempo, _total, _carregandoTexto;
     private readonly BarraDeTempo _barra;
     private readonly Button _play, _telaCheia, _mudo, _voltar;
@@ -89,6 +89,10 @@ public sealed class PlayerView : Grid
             _video = gl;
         }
         Children.Add(_video);
+        // o OpenGL guarda o último quadro desenhado: sem isto, o vídeo anterior pisca na tela até o
+        // novo ter imagem
+        _cortina = new Border { Background = Brushes.Black, IsHitTestVisible = false };
+        Children.Add(_cortina);
         _escuro = new Border { Background = Brushes.Black, Opacity = 0, IsHitTestVisible = false };
         Children.Add(_escuro);
 
@@ -352,6 +356,8 @@ public sealed class PlayerView : Grid
     }
 
     private bool _videoPronto;
+    /// <summary>O arquivo da vez já abriu: o próximo "pronto" do mpv é dele, não do anterior.</summary>
+    private bool _cortinaAbre;
     private Midia? _esperando;
 
     private void VideoPronto()
@@ -367,6 +373,7 @@ public sealed class PlayerView : Grid
         _atual = m;
         _pos = 0; _dur = Miniaturas.Duracao(m) ?? 0; _fim = false; _abrindo = true;
         _encerrado = false; _legendaDoUsuario = false;
+        _cortina.IsVisible = true; _cortinaAbre = false;
         Historico.Registrar(m);
         _titulo.Text = m.Titulo;
         TituloMudou?.Invoke(m.Titulo);
@@ -422,9 +429,14 @@ public sealed class PlayerView : Grid
         switch (e)
         {
             case MpvEvento.ArquivoAberto:
+                _cortinaAbre = true;
                 _abrindo = false;
                 Carregando(null);
                 if (_atual != null) AvisoAoServidor.Comecou(_atual, _mpv.GetDouble("time-pos") ?? 0);
+                break;
+            // o primeiro quadro do vídeo novo está pronto; espera ele chegar à tela antes de mostrar
+            case MpvEvento.Pronto when _cortinaAbre && _cortina.IsVisible:
+                DispatcherTimer.RunOnce(() => { if (_cortinaAbre) _cortina.IsVisible = false; }, TimeSpan.FromMilliseconds(60));
                 break;
             case MpvEvento.Fim f when f.Motivo == LibMpv.EndFileReason.Error:
                 _abrindo = false;
