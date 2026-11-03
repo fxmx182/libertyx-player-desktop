@@ -74,6 +74,10 @@ public sealed class Prefs
     public bool GuiaVisto { get; set; }
     public double MiniLargura { get; set; } = 480;      // a mini janela abre do tamanho que ficou
     public double MiniAltura { get; set; } = 270;
+    public string? IdDoAparelho { get; set; }           // como o Jellyfin/Emby lista este computador
+
+    /// <summary>Os vídeos abertos por último, de qualquer origem (ver <see cref="Core.Historico"/>). Null até a 1ª vez.</summary>
+    public List<ItemDoHistorico>? Historico { get; set; }
 
     // Pro (o mesmo modelo do Android: 7 dias de teste contados pelo app, ou a chave LibertyX)
     public long? InicioDoTeste { get; set; }

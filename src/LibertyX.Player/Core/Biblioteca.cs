@@ -1,11 +1,12 @@
 namespace LibertyX.Player.Core;
 
-public enum Origem { Arquivo, Smb, Url }
+public enum Origem { Arquivo, Smb, Url, WebDav, Servidor }
 
 /// <summary>
 /// Um vídeo, de onde quer que venha. <see cref="Endereco"/> é o que o mpv abre: o caminho do
-/// arquivo, <c>lxsmb://…</c> (o SMB do próprio app) ou um http. É também a chave da retomada e
-/// da miniatura.
+/// arquivo, <c>lxsmb://…</c> (o SMB do próprio app), um http, ou <c>lxdav://</c> e <c>lxmidia://</c>
+/// (WebDAV e Jellyfin/Emby, traduzidos por <see cref="Rede.Contas.ParaMpv"/> na hora de tocar). É
+/// também a chave da retomada e da miniatura — e não leva senha nem token.
 /// </summary>
 public sealed class Midia
 {
@@ -16,6 +17,11 @@ public sealed class Midia
     public DateTime Data { get; init; }
     /// <summary>O nome da pasta, para o cabeçalho e para o "continuar assistindo".</summary>
     public string? Pasta { get; init; }
+    /// <summary>Em segundos, quando a origem já diz (Jellyfin e Emby); dos outros, a miniatura descobre.</summary>
+    public double? Duracao { get; init; }
+
+    /// <summary>De um servidor (SMB, WebDAV, Jellyfin, Emby): é o que pede o Pro.</summary>
+    public bool DaRede => Origem is Origem.Smb or Origem.WebDav or Origem.Servidor;
 
     public static Midia DeArquivo(string caminho)
     {

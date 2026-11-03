@@ -138,8 +138,9 @@ public sealed class ConexaoSmb : IDisposable
         return _arvores[compartilhamento] = a;
     }
 
-    /// <summary>O conteúdo de uma pasta: subpastas e vídeos (o resto não interessa a um player).</summary>
-    public List<ItemSmb> Listar(string compartilhamento, string caminho)
+    /// <summary>O conteúdo de uma pasta: subpastas e vídeos (o resto não interessa a um player).
+    /// <paramref name="tudo"/>: os outros arquivos também — as legendas ao lado do vídeo.</summary>
+    public List<ItemSmb> Listar(string compartilhamento, string caminho, bool tudo = false)
     {
         var arv = Arvore(compartilhamento);
         var st = arv.CreateFile(out var h, out _, Win(caminho), AccessMask.GENERIC_READ | AccessMask.SYNCHRONIZE,
@@ -154,12 +155,35 @@ public sealed class ConexaoSmb : IDisposable
             {
                 if (i.FileName is "." or ".." || i.FileName.StartsWith('.') || (i.FileAttributes & FileAttributes.Hidden) != 0) continue;
                 bool pasta = (i.FileAttributes & FileAttributes.Directory) != 0;
-                if (!pasta && !Biblioteca.EhVideo(i.FileName)) continue;
+                if (!pasta && !tudo && !Biblioteca.EhVideo(i.FileName)) continue;
                 itens.Add(new ItemSmb(i.FileName, caminho.Length == 0 ? i.FileName : caminho + "/" + i.FileName, pasta, i.EndOfFile, i.LastWriteTime));
             }
         }
         finally { arv.CloseFile(h); }
         return itens;
+    }
+
+    /// <summary>Um arquivo pequeno inteiro (legenda), ou null se passar de <paramref name="teto"/> bytes.</summary>
+    public byte[]? Ler(string compartilhamento, string caminho, long teto)
+    {
+        var arv = Arvore(compartilhamento);
+        var st = arv.CreateFile(out var h, out _, Win(caminho), AccessMask.GENERIC_READ | AccessMask.SYNCHRONIZE,
+            FileAttributes.Normal, ShareAccess.Read | ShareAccess.Write, CreateDisposition.FILE_OPEN,
+            CreateOptions.FILE_NON_DIRECTORY_FILE | CreateOptions.FILE_SYNCHRONOUS_IO_NONALERT, null);
+        if (st != NTStatus.STATUS_SUCCESS) return null;
+        try
+        {
+            var saida = new MemoryStream();
+            while (saida.Length <= teto)
+            {
+                st = arv.ReadFile(out var dados, h, saida.Length, (int)Math.Min(MaxLeitura, 1u << 20));
+                if (st == NTStatus.STATUS_END_OF_FILE || dados == null || dados.Length == 0) break;
+                if (st != NTStatus.STATUS_SUCCESS) return null;
+                saida.Write(dados);
+            }
+            return saida.Length <= teto ? saida.ToArray() : null;
+        }
+        finally { arv.CloseFile(h); }
     }
 
     public static string Win(string caminho) => caminho.Replace('/', '\\').Trim('\\');

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -9,6 +10,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using LibertyX.Player.Core;
 using LibertyX.Player.Mpv;
+using LibertyX.Player.Rede;
 using static LibertyX.Player.Core.Textos;
 
 namespace LibertyX.Player.Views;
@@ -46,6 +48,15 @@ public sealed class PlayerView : Grid
     private double _escurecer;
     private string _trilhasJson = "[]";
     private readonly Random _sorte = new();
+    /// <summary>Quem escolheu a legenda no menu manda nela até o vídeo trocar.</summary>
+    private bool _legendaDoUsuario;
+    /// <summary>O vídeo atual já passou por <see cref="Encerrar"/>; volta a false a cada vídeo.</summary>
+    private bool _encerrado;
+
+    /// <summary>"Forced", "Forçada", "Forzados", "Forcée": é como os arquivos marcam a legenda forçada.</summary>
+    private static readonly Regex Forcada = new(@"(?i)(^|[^\p{L}])(forced|for[çcz]ad[oa]s?|forcée?s?)([^\p{L}]|$)");
+    /// <summary>S01E02, 1x02: nome de episódio.</summary>
+    private static readonly Regex Episodio = new(@"(?i)(\bS\d{1,2}\s?E\d{1,3}\b|\b\d{1,2}x\d{2,3}\b)");
 
     /// <summary>Volta à biblioteca.</summary>
     public event Action? Fechou;
@@ -278,8 +289,19 @@ public sealed class PlayerView : Grid
         if (_atual != null)
         {
             _mpv.SetString("start", _pos.ToString("0.###", CultureInfo.InvariantCulture));
-            _mpv.Command("loadfile", _atual.Endereco, "replace");
+            Carregar(_atual);
         }
+    }
+
+    /// <summary>
+    /// Entrega o vídeo ao mpv. WebDAV e Jellyfin/Emby viram a URL de verdade só aqui, com a senha no
+    /// cabeçalho — o endereço do app, que fica no histórico e nas marcas, não leva segredo nenhum.
+    /// </summary>
+    private void Carregar(Midia m)
+    {
+        var (url, cabecalho) = Contas.ParaMpv(m.Endereco);
+        _mpv.SetString("http-header-fields", cabecalho ?? "");
+        _mpv.Command("loadfile", url, "replace");
     }
 
     /// <summary>As opções e propriedades que o player observa (uma vez, ao criar o mpv).</summary>
@@ -322,7 +344,7 @@ public sealed class PlayerView : Grid
     /// <summary>Toca <paramref name="fila"/> a partir de <paramref name="indice"/>; a fila é a pasta (próximo/anterior).</summary>
     public void Tocar(List<Midia> fila, int indice)
     {
-        SalvarPosicao();
+        Encerrar();
         _fila = fila;
         _indice = Math.Clamp(indice, 0, Math.Max(0, fila.Count - 1));
         if (_fila.Count == 0) return;
@@ -344,6 +366,8 @@ public sealed class PlayerView : Grid
         if (!_videoPronto) { _esperando = m; _atual = m; _titulo.Text = m.Titulo; Carregando(S("Abrindo…")); return; }
         _atual = m;
         _pos = 0; _dur = Miniaturas.Duracao(m) ?? 0; _fim = false; _abrindo = true;
+        _encerrado = false; _legendaDoUsuario = false;
+        Historico.Registrar(m);
         _titulo.Text = m.Titulo;
         TituloMudou?.Invoke(m.Titulo);
         _barra.Fracao = 0; _barra.Cache = 0;
@@ -357,7 +381,12 @@ public sealed class PlayerView : Grid
         _mpv.SetFlag("pause", inicio > 0);
         Propriedade("pause", inicio > 0);
         _mpv.SetString("loop-file", Prefs.Atual.Repetir ? "inf" : "no");
-        _mpv.Command("loadfile", m.Endereco, "replace");
+        // a faixa escolhida no vídeo anterior não vale para este; a legenda começa desligada e a regra
+        // da legenda forçada decide (ver AplicarRegraDaLegenda)
+        _mpv.SetString("aid", "auto");
+        _mpv.SetString("sid", "no");
+        Carregar(m);
+        if (m.DaRede) BuscarLegendasAoLado(m);
         if (inicio > 0) PerguntarRetomada(inicio);
         _salvarTimer.Start();
         Mexeu();
@@ -395,6 +424,7 @@ public sealed class PlayerView : Grid
             case MpvEvento.ArquivoAberto:
                 _abrindo = false;
                 Carregando(null);
+                if (_atual != null) AvisoAoServidor.Comecou(_atual, _mpv.GetDouble("time-pos") ?? 0);
                 break;
             case MpvEvento.Fim f when f.Motivo == LibMpv.EndFileReason.Error:
                 _abrindo = false;
@@ -419,6 +449,7 @@ public sealed class PlayerView : Grid
                 _pos = t;
                 if (!_barra.Arrastando && !_soltandoBusca) _barra.Fracao = _dur > 0 ? t / _dur : 0;
                 _tempo.Text = Tempo(t);
+                AvisoAoServidor.Andou(t, _pausado);
                 break;
             case "duration" when v is double d:
                 _dur = d;
@@ -428,6 +459,7 @@ public sealed class PlayerView : Grid
                 _pausado = b;
                 ((PathIcon)_play.Content!).Data = StreamGeometry.Parse(b ? Icones.Play : Icones.Pausa);
                 Inibir(!b);
+                AvisoAoServidor.Andou(_pos, b);
                 if (b) MostrarControles(true); else Mexeu();
                 break;
             case "eof-reached" when v is bool b:
@@ -448,6 +480,7 @@ public sealed class PlayerView : Grid
                 break;
             case "track-list" when v is string j:
                 _trilhasJson = j;
+                AplicarRegraDaLegenda();
                 break;
             case "demuxer-cache-time" when v is double c:
                 _barra.Cache = _dur > 0 ? c / _dur : 0;
@@ -460,7 +493,7 @@ public sealed class PlayerView : Grid
 
     private void ChegouAoFim()
     {
-        if (_atual != null) { Prefs.Atual.Posicoes.Remove(_atual.Endereco); Prefs.Atual.Salvar(); }
+        Encerrar(acabou: true);
         if (_dormirNoFim) { _dormirNoFim = false; Hud(S("Bom descanso"), 2500); return; }
         if (Prefs.Atual.Repetir) return;   // o loop-file cuida
         if (Prefs.Atual.Aleatorio && _fila.Count > 1) { _indice = (_indice + 1 + _sorte.Next(_fila.Count - 1)) % _fila.Count; Abrir(_fila[_indice]); }
@@ -507,7 +540,7 @@ public sealed class PlayerView : Grid
         if (direcao < 0 && _pos > 5) { _mpv.Command("seek", "0", "absolute"); return; }
         int novo = Prefs.Atual.Aleatorio && _fila.Count > 1 ? _sorte.Next(_fila.Count) : _indice + direcao;
         if (novo < 0 || novo >= _fila.Count) { Hud(direcao > 0 ? S("Este é o último") : S("Este é o primeiro"), 1200); return; }
-        SalvarPosicao();
+        Encerrar();
         _indice = novo;
         Abrir(_fila[_indice]);
     }
@@ -549,6 +582,7 @@ public sealed class PlayerView : Grid
 
     public void CicloTrilha(string tipo)
     {
+        if (tipo != "audio") _legendaDoUsuario = true;
         _mpv.Command("cycle", tipo == "audio" ? "aid" : "sid");
         DispatcherTimer.RunOnce(() =>
         {
@@ -559,7 +593,7 @@ public sealed class PlayerView : Grid
 
     public void Fechar()
     {
-        SalvarPosicao();
+        Encerrar();
         _salvarTimer.Stop();
         _dormir?.Dispose(); _dormir = null; _dormirAte = null;
         _mpv.Command("stop");
@@ -570,13 +604,45 @@ public sealed class PlayerView : Grid
         Fechou?.Invoke();
     }
 
+    /// <summary>
+    /// O vídeo atual sai de cena: acabou, foi trocado ou o player fechou. Visto até o fim (pela regra
+    /// do Jellyfin, ver <see cref="Historico.Visto"/>), sai do histórico e o próximo episódio entra no
+    /// lugar; senão, fica a marca para retomar. <paramref name="acabou"/>: chegou ao fim sozinho, e
+    /// então conta como visto mesmo sem saber a duração.
+    /// </summary>
+    public void Encerrar(bool acabou = false)
+    {
+        if (_atual == null || _encerrado) return;
+        _encerrado = true;
+        bool visto = !_abrindo && (acabou || Historico.Visto(_pos, _dur));
+        if (visto)
+        {
+            Prefs.Atual.Posicoes.Remove(_atual.Endereco);
+            // o do servidor vem do "A seguir" dele (AvisoAoServidor), que sabe da temporada seguinte
+            Historico.Terminou(_atual.Endereco, _atual.Origem == Origem.Servidor ? null : ProximoEpisodioDaFila());
+        }
+        else SalvarPosicao();
+        AvisoAoServidor.Parou(_pos, visto);
+    }
+
+    /// <summary>
+    /// O vídeo seguinte da fila, quando os dois têm nome de episódio (S01E02, 1x02). Numa pasta de
+    /// filmes, o seguinte é outro filme — e um filme que ninguém começou não tem por que ir ao histórico.
+    /// </summary>
+    private Midia? ProximoEpisodioDaFila()
+    {
+        if (_atual == null || Prefs.Atual.Aleatorio || _indice + 1 >= _fila.Count) return null;
+        var seguinte = _fila[_indice + 1];
+        return Episodio.IsMatch(_atual.Titulo) && Episodio.IsMatch(seguinte.Titulo) ? seguinte : null;
+    }
+
     public void SalvarPosicao()
     {
         if (_atual == null || _dur <= 0 || _abrindo) return;
         var p = Prefs.Atual;
-        if (_pos > 10 && _pos < _dur - 20)
+        if (_pos > 10 && _pos < _dur - 20 && !Historico.Visto(_pos, _dur))
             p.Posicoes[_atual.Endereco] = new Retomada { Posicao = _pos, Duracao = _dur, Quando = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Titulo = _atual.Titulo };
-        else if (_pos >= _dur - 20) p.Posicoes.Remove(_atual.Endereco);
+        else if (_pos >= _dur - 20 || Historico.Visto(_pos, _dur)) p.Posicoes.Remove(_atual.Endereco);
         p.Salvar();
     }
 
@@ -919,9 +985,9 @@ public sealed class PlayerView : Grid
         var l = Trilhas(tipo);
         var itens = new List<Control>
         {
-            Item(tipo == "audio" ? S("Sem áudio") : S("Sem legenda"), null, () => _mpv.SetString(tipo == "audio" ? "aid" : "sid", "no"), marcado: !l.Any(t => t.Selecionada)),
+            Item(tipo == "audio" ? S("Sem áudio") : S("Sem legenda"), null, () => Escolher(tipo, "no"), marcado: !l.Any(t => t.Selecionada)),
         };
-        itens.AddRange(l.Select(t => (Control)Item(t.Nome, null, () => _mpv.SetString(tipo == "audio" ? "aid" : "sid", t.Id.ToString(CultureInfo.InvariantCulture)), marcado: t.Selecionada)));
+        itens.AddRange(l.Select(t => (Control)Item(t.Nome, null, () => Escolher(tipo, t.Id.ToString(CultureInfo.InvariantCulture)), marcado: t.Selecionada)));
         if (tipo == "sub")
         {
             itens.Add(Item(S("Abrir arquivo de legenda…"), Icones.Arquivo, AbrirLegenda));
@@ -936,6 +1002,60 @@ public sealed class PlayerView : Grid
             itens.Add(Item(S("Atrasar áudio 0,1 s"), null, () => Atraso("audio-delay", 0.1), fechar: false, lateral: atraso != 0 ? $"{atraso:+0.0;-0.0} s" : null));
         }
         AbrirPainel(tipo == "audio" ? S("Faixa de áudio") : S("Legendas"), [.. itens]);
+    }
+
+    private void Escolher(string tipo, string id)
+    {
+        if (tipo != "audio") _legendaDoUsuario = true;
+        _mpv.SetString(tipo == "audio" ? "aid" : "sid", id);
+    }
+
+    /// <summary>
+    /// Ao abrir, só a legenda <b>forçada</b> fica ligada — a que traduz a placa, a carta ou o idioma
+    /// estrangeiro no meio do filme. A completa vem desligada: quase sempre está no mesmo idioma do
+    /// áudio, repetindo o que já se ouve. Forçada é a que o arquivo marca assim ou a que tem isso no
+    /// nome. Chamada a cada mudança das faixas, porque a legenda ao lado do vídeo chega depois.
+    /// </summary>
+    private void AplicarRegraDaLegenda()
+    {
+        if (_legendaDoUsuario || _atual == null) return;
+        long? alvo = null, ligada = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(_trilhasJson);
+            foreach (var t in doc.RootElement.EnumerateArray())
+            {
+                if (t.GetProperty("type").GetString() != "sub") continue;
+                long id = t.GetProperty("id").GetInt64();
+                if (t.TryGetProperty("selected", out var se) && se.GetBoolean()) ligada = id;
+                if (alvo != null) continue;
+                bool forcada = t.TryGetProperty("forced", out var fo) && fo.ValueKind == JsonValueKind.True;
+                foreach (var campo in new[] { "title", "external-filename" })
+                    if (t.TryGetProperty(campo, out var v) && v.ValueKind == JsonValueKind.String && Forcada.IsMatch(Path.GetFileName(v.GetString() ?? ""))) forcada = true;
+                if (forcada) alvo = id;
+            }
+        }
+        catch { return; }
+        if (alvo != ligada) _mpv.SetString("sid", alvo?.ToString(CultureInfo.InvariantCulture) ?? "no");
+    }
+
+    /// <summary>
+    /// As legendas ao lado do vídeo no SMB, no WebDAV e no Jellyfin: o mpv acha sozinho as do
+    /// computador (sub-auto), mas não enxerga a pasta de um servidor. Chegam depois do vídeo, como
+    /// arquivos do cache; a regra da legenda forçada as reconhece pelo nome.
+    /// </summary>
+    private void BuscarLegendasAoLado(Midia m)
+    {
+        _ = Task.Run(async () =>
+        {
+            var arquivos = await LegendasAoLado.Buscar(m);
+            if (arquivos.Count == 0) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_atual != m) return;
+                foreach (var f in arquivos) _mpv.Command("sub-add", f, "auto", Path.GetFileName(f));
+            });
+        });
     }
 
     private void Atraso(string prop, double delta)
@@ -956,6 +1076,7 @@ public sealed class PlayerView : Grid
         });
         if (r.FirstOrDefault()?.TryGetLocalPath() is { } f)
         {
+            _legendaDoUsuario = true;
             _mpv.Command("sub-add", f, "select");
             Hud(S("Legenda carregada"), 1000);
         }
@@ -965,6 +1086,7 @@ public sealed class PlayerView : Grid
     public bool AdicionarLegenda(string arquivo)
     {
         if (_atual == null || !Biblioteca.ExtensoesLegenda.Contains(Path.GetExtension(arquivo))) return false;
+        _legendaDoUsuario = true;
         _mpv.Command("sub-add", arquivo, "select");
         Hud(S("Legenda carregada"), 1000);
         return true;
@@ -975,7 +1097,7 @@ public sealed class PlayerView : Grid
         string Prop(string p) => _mpv.GetString(p) ?? "—";
         var linhas = new List<(string, string)>
         {
-            (S("Arquivo"), _atual?.Endereco.StartsWith("lxsmb://") == true ? _atual.Titulo : _atual?.Endereco ?? "—"),
+            (S("Arquivo"), _atual?.Origem is Origem.Arquivo or Origem.Url ? _atual.Endereco : _atual?.Titulo ?? "—"),
             (S("Formato"), Prop("file-format")),
             (S("Vídeo"), $"{Prop("video-codec")}  {Prop("width")}×{Prop("height")}  {Prop("container-fps")} fps"),
             (S("Decodificação"), Prop("hwdec-current") is "no" or "—" ? S("processador (software)") : Prop("hwdec-current")),

@@ -11,33 +11,39 @@ using static LibertyX.Player.Core.Textos;
 namespace LibertyX.Player.Views;
 
 /// <summary>
-/// A biblioteca: "continuar assistindo", as pastas com vídeo (capa = o vídeo mais novo) e, dentro
-/// de cada uma, os vídeos em grade ou em lista. Igual ao celular, só que varrendo o disco.
+/// O Início: o histórico (de qualquer origem), os atalhos dos servidores salvos e as pastas com
+/// vídeo do computador (capa = o vídeo mais novo) — dentro de cada uma, os vídeos em grade ou em
+/// lista. Igual ao celular, só que varrendo o disco.
 /// </summary>
 public sealed class BibliotecaView : DockPanel
 {
     private readonly Action<List<Midia>, int> _tocar;
     private readonly Action _adicionarPasta, _abrirArquivo;
+    private readonly Action<object> _abrirServidor;
+    private readonly Action<TipoDeConta?> _adicionarServidor;
     private readonly StackPanel _corpo = new() { Spacing = 22, Margin = new Thickness(28, 6, 28, 28) };
-    private readonly TextBox _busca;
-    private readonly TextBlock _contagem;
+    private readonly TextBlock _titulo, _contagem;
     private readonly Button _voltar;
+    private readonly ScrollViewer _rolagem;
     private List<PastaDeVideos> _pastas = [];
     private PastaDeVideos? _aberta;
     private bool _varrendo;
     private CancellationTokenSource? _cts;
 
-    public BibliotecaView(Action<List<Midia>, int> tocar, Action adicionarPasta, Action abrirArquivo)
+    /// <summary>A última varredura — a aba Arquivos e a busca leem daqui.</summary>
+    public List<PastaDeVideos> Pastas => _pastas;
+    public event Action? Varreu;
+
+    public BibliotecaView(Action<List<Midia>, int> tocar, Action adicionarPasta, Action abrirArquivo,
+        Action<object> abrirServidor, Action<TipoDeConta?> adicionarServidor)
     {
         _tocar = tocar; _adicionarPasta = adicionarPasta; _abrirArquivo = abrirArquivo;
+        _abrirServidor = abrirServidor; _adicionarServidor = adicionarServidor;
 
-        _voltar = Ui.BotaoIcone(Icones.Voltar, S("Todas as pastas"), () => { _aberta = null; Montar(); }, "plano");
+        _voltar = Ui.BotaoIcone(Icones.Voltar, S("Voltar"), Raiz, "plano");
         _voltar.IsVisible = false;
         _contagem = Ui.Linha("", 13, FontWeight.Medium, "apagado");
         _contagem.VerticalAlignment = VerticalAlignment.Center;
-        _busca = new TextBox { Watermark = S("Buscar vídeos"), Width = 240, VerticalAlignment = VerticalAlignment.Center, InnerLeftContent = Ui.Icone(Icones.Buscar, 16, Ui.Pincel("Apagado")) };
-        ((PathIcon)_busca.InnerLeftContent).Margin = new Thickness(10, 0, 0, 0);
-        _busca.TextChanged += (_, _) => Montar();
 
         var ordem = Ui.BotaoIcone(Icones.Ordenar, S("Ordenar"), () => { }, "plano");
         var menuOrdem = new MenuFlyout();
@@ -55,22 +61,41 @@ public sealed class BibliotecaView : DockPanel
             ((PathIcon)modo.Content!).Data = StreamGeometry.Parse(Prefs.Atual.Lista ? Icones.Grade : Icones.Lista);
             Montar();
         };
+        // o + do celular: pasta do computador ou servidor de qualquer tipo
+        var mais = Ui.BotaoIcone(Icones.Adicionar, S("Adicionar"), () => { }, "plano");
+        var menuMais = new MenuFlyout();
+        void Opcao(string nome, Action a) { var mi = new MenuItem { Header = nome }; mi.Click += (_, _) => a(); menuMais.Items.Add(mi); }
+        Opcao(S("Pasta do computador"), adicionarPasta);
+        Opcao(S("Servidor SMB (Windows, Samba, NAS)"), () => adicionarServidor(null));
+        Opcao(S("WebDAV / Nextcloud"), () => adicionarServidor(TipoDeConta.WebDav));
+        Opcao("Jellyfin", () => adicionarServidor(TipoDeConta.Jellyfin));
+        Opcao("Emby", () => adicionarServidor(TipoDeConta.Emby));
+        mais.Flyout = menuMais;
 
-        var titulo = Ui.Linha(S("Vídeos"), 26, FontWeight.ExtraBold);
+        _titulo = Ui.Linha(S("Início"), 26, FontWeight.ExtraBold);
         var cabecalho = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto"), Margin = new Thickness(28, 18, 28, 10) };
         cabecalho.Children.Add(_voltar);
-        Grid.SetColumn(titulo, 1); titulo.Margin = new Thickness(4, 0, 12, 0);
-        cabecalho.Children.Add(titulo);
+        Grid.SetColumn(_titulo, 1); _titulo.Margin = new Thickness(4, 0, 12, 0);
+        cabecalho.Children.Add(_titulo);
         Grid.SetColumn(_contagem, 2);
         cabecalho.Children.Add(_contagem);
-        var acoes = Ui.Pilha(4, Orientation.Horizontal, _busca, ordem, modo,
-            Ui.BotaoIcone(Icones.Atualizar, S("Procurar de novo"), () => Varrer(), "plano"),
-            Ui.BotaoIcone(Icones.Adicionar, S("Acrescentar uma pasta à biblioteca"), adicionarPasta, "plano"));
+        var acoes = Ui.Pilha(4, Orientation.Horizontal, ordem, modo,
+            Ui.BotaoIcone(Icones.Atualizar, S("Procurar de novo"), () => Varrer(), "plano"), mais);
         Grid.SetColumn(acoes, 4);
         cabecalho.Children.Add(acoes);
         SetDock(cabecalho, Dock.Top);
         Children.Add(cabecalho);
-        Children.Add(new ScrollViewer { Content = _corpo });
+        _rolagem = new ScrollViewer { Content = _corpo };
+        Children.Add(_rolagem);
+        Historico.Mudou += () => { if (_aberta == null && IsVisible) Montar(); };
+    }
+
+    /// <summary>O botão da dock: volta ao começo da aba, como no celular.</summary>
+    public void Raiz()
+    {
+        _aberta = null;
+        Montar();
+        _rolagem.Offset = default;
     }
 
     public void Varrer()
@@ -80,7 +105,7 @@ public sealed class BibliotecaView : DockPanel
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        if (_pastas.Count == 0) { _corpo.Children.Clear(); _corpo.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 200, Margin = new Thickness(0, 60) }); }
+        if (_pastas.Count == 0 && _aberta == null) Montar();
         Task.Run(() => Biblioteca.Varrer(ct), ct).ContinueWith(t =>
         {
             Dispatcher.UIThread.Post(() =>
@@ -89,96 +114,109 @@ public sealed class BibliotecaView : DockPanel
                 if (t.IsCompletedSuccessfully) _pastas = t.Result;
                 if (_aberta != null) _aberta = _pastas.FirstOrDefault(p => p.Caminho == _aberta.Caminho);
                 Montar();
+                Varreu?.Invoke();
             });
         });
     }
 
-    /// <summary>Redesenha com o que já se sabe (depois de voltar do player, para o "continuar" e o progresso).</summary>
+    /// <summary>Redesenha com o que já se sabe (depois de voltar do player, para o histórico e o progresso).</summary>
     public void Montar()
     {
         _corpo.Children.Clear();
         _voltar.IsVisible = _aberta != null;
-        string q = _busca.Text?.Trim() ?? "";
         int total = _pastas.Sum(p => p.Videos.Count);
-
-        if (q.Length > 0)
-        {
-            var achados = Biblioteca.Ordenar(_pastas.SelectMany(p => p.Videos).Where(v => v.Titulo.Contains(q, StringComparison.CurrentCultureIgnoreCase)), Prefs.Atual.Ordem).ToList();
-            _contagem.Text = P(achados.Count, "{0} vídeo", "{0} vídeos");
-            if (achados.Count == 0) _corpo.Children.Add(Ui.Texto(F("Nada com \"{0}\".", q), 15, FontWeight.Normal, "apagado"));
-            else _corpo.Children.Add(Videos(achados));
-            return;
-        }
 
         if (_aberta != null)
         {
             var lista = Biblioteca.Ordenar(_aberta.Videos, Prefs.Atual.Ordem).ToList();
-            _contagem.Text = $"{_aberta.Nome} · {P(lista.Count, "{0} vídeo", "{0} vídeos")}";
-            _corpo.Children.Add(Videos(lista));
+            _titulo.Text = _aberta.Nome;
+            _contagem.Text = P(lista.Count, "{0} vídeo", "{0} vídeos");
+            _corpo.Children.Add(Cartoes.Videos(lista, _tocar, MenuVideo));
             return;
         }
 
+        _titulo.Text = S("Início");
         _contagem.Text = total > 0 ? P(total, "{0} vídeo", "{0} vídeos") : "";
-        if (Continuar() is { } c) _corpo.Children.Add(c);
-        if (_pastas.Count == 0 && !_varrendo) { _corpo.Children.Add(Vazio()); return; }
-        if (_pastas.Count > 0)
+        if (FaixaHistorico() is { } h) _corpo.Children.Add(h);
+        if (FaixaServidores() is { } sv) _corpo.Children.Add(sv);
+        if (_pastas.Count == 0)
         {
-            _corpo.Children.Add(Ui.Texto(S("Pastas"), 17, FontWeight.Bold));
-            // o botão grade/lista vale também para as pastas da tela inicial
-            Panel painel = Prefs.Atual.Lista ? new StackPanel { Spacing = 2 } : new WrapPanel { Orientation = Orientation.Horizontal };
-            foreach (var p in _pastas) painel.Children.Add(Prefs.Atual.Lista ? LinhaPasta(p) : CartaoPasta(p));
-            _corpo.Children.Add(painel);
+            if (_varrendo) _corpo.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 200, Margin = new Thickness(0, 40) });
+            else _corpo.Children.Add(Vazio());
+            return;
         }
+        _corpo.Children.Add(Ui.Texto(S("Pastas"), 17, FontWeight.Bold));
+        // o botão grade/lista vale também para as pastas da tela inicial
+        Panel painel = Prefs.Atual.Lista ? new StackPanel { Spacing = 2 } : new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var p in _pastas) painel.Children.Add(Prefs.Atual.Lista ? LinhaPasta(p) : CartaoPasta(p));
+        _corpo.Children.Add(painel);
     }
 
-    // ───────── continuar assistindo ─────────
+    // ───────── histórico ─────────
 
-    private Control? Continuar()
+    /// <summary>Os vídeos abertos por último, de qualquer origem — servidor incluído.</summary>
+    private Control? FaixaHistorico()
     {
-        var itens = new List<(Midia m, Retomada r)>();
-        foreach (var (end, r) in Prefs.Atual.Posicoes.OrderByDescending(p => p.Value.Quando))
-        {
-            if (itens.Count >= 12) break;
-            Midia? m = null;
-            // arquivo do computador: /… no Linux, C:\… no Windows
-            if (!end.Contains("://") && Path.IsPathFullyQualified(end)) { if (File.Exists(end)) m = Midia.DeArquivo(end); }
-            else if (ConexaoSmb.Partes(end) is { } sp && Servidores.Achar(sp.id) is { } srv)
-                m = new Midia { Endereco = end, Titulo = r.Titulo ?? Path.GetFileNameWithoutExtension(sp.caminho), Origem = Origem.Smb, Pasta = srv.Nome };
-            else if (end.Contains("://")) m = new Midia { Endereco = end, Titulo = r.Titulo ?? Midia.DeUrl(end).Titulo, Origem = Origem.Url };
-            if (m != null) itens.Add((m, r));
-        }
+        var itens = Historico.Itens().Take(20).ToList();
         if (itens.Count == 0) return null;
-        var faixa = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14 };
-        foreach (var (m, r) in itens)
+        var cartoes = new List<Control>();
+        foreach (var m in itens)
         {
             var capa = Ui.Capa(250, 141, out var img);
             var g = (Grid)capa.Child!;
-            g.Children.Add(Ui.Progresso(r.Fracao));
-            var resta = Ui.Selo(F("faltam {0}", Tempo(r.Duracao - r.Posicao)));
-            resta.HorizontalAlignment = HorizontalAlignment.Right; resta.VerticalAlignment = VerticalAlignment.Bottom; resta.Margin = new Thickness(0, 0, 6, 10);
-            g.Children.Add(resta);
-            CarregarQuandoVisivel(capa, m, img);
+            if (Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r))
+            {
+                g.Children.Add(Ui.Progresso(r.Fracao));
+                var resta = Ui.Selo(F("faltam {0}", Tempo(r.Duracao - r.Posicao)));
+                resta.HorizontalAlignment = HorizontalAlignment.Right; resta.VerticalAlignment = VerticalAlignment.Bottom; resta.Margin = new Thickness(0, 0, 6, 10);
+                g.Children.Add(resta);
+            }
+            Cartoes.CarregarQuandoVisivel(capa, m, img);
             var b = new Button
             {
                 Classes = { "cartao" }, Width = 262, Padding = new Thickness(6),
                 Content = Ui.Pilha(6, Orientation.Vertical, capa, Ui.Linha(m.Titulo, 13, FontWeight.SemiBold), Ui.Linha(m.Pasta ?? "", 12, FontWeight.Normal, "tenue")),
             };
+            ToolTip.SetTip(b, m.Titulo);
             b.Click += (_, _) => TocarComVizinhos(m);
             var menu = new MenuFlyout();
-            var tirar = new MenuItem { Header = S("Tirar de \"continuar assistindo\"") };
-            tirar.Click += (_, _) => { Prefs.Atual.Posicoes.Remove(m.Endereco); Prefs.Atual.Salvar(); Montar(); };
+            var tirar = new MenuItem { Header = S("Remover do histórico") };
+            tirar.Click += (_, _) => Historico.Remover(m.Endereco);
             menu.Items.Add(tirar);
             b.ContextFlyout = menu;
-            faixa.Children.Add(b);
+            cartoes.Add(b);
         }
         var limpar = Ui.Botao(S("Limpar"), Icones.Apagar, "plano", () =>
         {
-            Prefs.Atual.Posicoes.Clear(); Prefs.Atual.Salvar(); Montar();
+            Prefs.Atual.Posicoes.Clear();
+            Historico.Limpar();
         }, 15);
         ToolTip.SetTip(limpar, S("Apagar o histórico de reprodução"));
-        var topo = Ui.Pilha(12, Orientation.Horizontal, Ui.Texto(S("Continuar assistindo"), 17, FontWeight.Bold), limpar);
-        return Ui.Pilha(10, Orientation.Vertical, topo,
-            new ScrollViewer { Content = faixa, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        return Cartoes.Faixa(S("Histórico"), cartoes, limpar);
+    }
+
+    /// <summary>Os servidores salvos, a um clique — cadastrar fica no + (e na aba Arquivos).</summary>
+    private Control? FaixaServidores()
+    {
+        var cartoes = new List<Control>();
+        foreach (var s in Servidores.Lista)
+            cartoes.Add(Atalho(Icones.Servidor, s.Nome, "SMB", () => _abrirServidor(s)));
+        foreach (var c in Contas.Lista)
+            cartoes.Add(Atalho(c.Tipo == TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, c.Nome, c.NomeDoTipo, () => _abrirServidor(c)));
+        if (cartoes.Count == 0) return null;
+        return Cartoes.Faixa(S("Servidores"), cartoes);
+    }
+
+    private static Button Atalho(string icone, string nome, string tipo, Action abrir)
+    {
+        var b = new Button
+        {
+            Classes = { "vidro" }, Width = 220, Padding = new Thickness(16, 14), HorizontalContentAlignment = HorizontalAlignment.Left,
+            Content = Ui.Pilha(14, Orientation.Horizontal, Ui.Icone(icone, 26, Ui.Pincel("Ouro")),
+                Ui.Pilha(2, Orientation.Vertical, Ui.Linha(nome, 15, FontWeight.Bold), Ui.Linha(tipo, 12, FontWeight.Normal, "tenue"))),
+        };
+        b.Click += (_, _) => abrir();
+        return b;
     }
 
     private void TocarComVizinhos(Midia m)
@@ -203,17 +241,16 @@ public sealed class BibliotecaView : DockPanel
         n.HorizontalAlignment = HorizontalAlignment.Right; n.VerticalAlignment = VerticalAlignment.Bottom; n.Margin = new Thickness(0, 0, 6, 6);
         g.Children.Add(n);
         var maisNovo = p.Videos.OrderByDescending(v => v.Data).First();
-        CarregarQuandoVisivel(capa, maisNovo, img);
-        string onde = p.Caminho.StartsWith(Caminhos.Home) ? "~" + p.Caminho[Caminhos.Home.Length..] : p.Caminho;
+        Cartoes.CarregarQuandoVisivel(capa, maisNovo, img);
         var b = new Button
         {
             Classes = { "cartao" }, Width = 262, Padding = new Thickness(6), Margin = new Thickness(0, 0, 14, 14),
             Content = Ui.Pilha(4, Orientation.Vertical, capa,
                 Ui.Pilha(6, Orientation.Horizontal, Ui.Icone(Icones.Pasta, 15, Ui.Pincel("Ouro")), Ui.Linha(p.Nome, 14, FontWeight.Bold)),
-                Ui.Linha(onde, 12, FontWeight.Normal, "tenue")),
+                Ui.Linha(Onde(p), 12, FontWeight.Normal, "tenue")),
         };
         ToolTip.SetTip(b, p.Caminho);
-        b.Click += (_, _) => { _aberta = p; Montar(); };
+        b.Click += (_, _) => Abrir(p);
         b.ContextFlyout = MenuPasta(p);
         return b;
     }
@@ -221,11 +258,10 @@ public sealed class BibliotecaView : DockPanel
     private Control LinhaPasta(PastaDeVideos p)
     {
         var capa = Ui.Capa(128, 72, out var img);
-        CarregarQuandoVisivel(capa, p.Videos.OrderByDescending(v => v.Data).First(), img);
-        string onde = p.Caminho.StartsWith(Caminhos.Home) ? "~" + p.Caminho[Caminhos.Home.Length..] : p.Caminho;
+        Cartoes.CarregarQuandoVisivel(capa, p.Videos.OrderByDescending(v => v.Data).First(), img);
         var textos = Ui.Pilha(4, Orientation.Vertical,
             Ui.Pilha(6, Orientation.Horizontal, Ui.Icone(Icones.Pasta, 15, Ui.Pincel("Ouro")), Ui.Linha(p.Nome, 14, FontWeight.SemiBold)),
-            Ui.Linha($"{P(p.Videos.Count, "{0} vídeo", "{0} vídeos")} · {onde}", 12, FontWeight.Normal, "tenue"));
+            Ui.Linha($"{P(p.Videos.Count, "{0} vídeo", "{0} vídeos")} · {Onde(p)}", 12, FontWeight.Normal, "tenue"));
         textos.VerticalAlignment = VerticalAlignment.Center;
         var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         g.Children.Add(capa);
@@ -233,12 +269,16 @@ public sealed class BibliotecaView : DockPanel
         g.Children.Add(textos);
         var b = new Button { Classes = { "cartao" }, Padding = new Thickness(6), HorizontalAlignment = HorizontalAlignment.Stretch, Content = g };
         ToolTip.SetTip(b, p.Caminho);
-        b.Click += (_, _) => { _aberta = p; Montar(); };
+        b.Click += (_, _) => Abrir(p);
         b.ContextFlyout = MenuPasta(p);
         return b;
     }
 
-    private MenuFlyout MenuPasta(PastaDeVideos p)
+    public static string Onde(PastaDeVideos p) => p.Caminho.StartsWith(Caminhos.Home) ? "~" + p.Caminho[Caminhos.Home.Length..] : p.Caminho;
+
+    private void Abrir(PastaDeVideos p) { _aberta = p; Montar(); _rolagem.Offset = default; }
+
+    public MenuFlyout MenuPasta(PastaDeVideos p)
     {
         var menu = new MenuFlyout();
         var tocar = new MenuItem { Header = S("Tocar tudo") };
@@ -249,101 +289,28 @@ public sealed class BibliotecaView : DockPanel
         ocultar.Click += (_, _) =>
         {
             Prefs.Atual.PastasOcultas.Add(p.Caminho); Prefs.Atual.Salvar();
-            _pastas.Remove(p); Montar();
+            _pastas.Remove(p); Montar(); Varreu?.Invoke();
         };
         menu.Items.Add(tocar); menu.Items.Add(abrir); menu.Items.Add(ocultar);
         return menu;
     }
 
-    // ───────── vídeos ─────────
-
-    private Control Videos(List<Midia> lista)
-    {
-        if (Prefs.Atual.Lista)
-        {
-            var pilha = new StackPanel { Spacing = 2 };
-            for (int i = 0; i < lista.Count; i++) pilha.Children.Add(LinhaVideo(lista, i));
-            return pilha;
-        }
-        var wrap = new WrapPanel();
-        for (int i = 0; i < lista.Count; i++) wrap.Children.Add(CartaoVideo(lista, i));
-        return wrap;
-    }
-
-    private Control CartaoVideo(List<Midia> lista, int i)
-    {
-        var m = lista[i];
-        var capa = Ui.Capa(250, 141, out var img);
-        var g = (Grid)capa.Child!;
-        Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r);
-        g.Children.Add(Ui.Progresso(r?.Fracao ?? 0));
-        var dur = Ui.Selo(Miniaturas.Duracao(m) is { } d ? Tempo(d) : "");
-        dur.IsVisible = Miniaturas.Duracao(m) != null;
-        dur.HorizontalAlignment = HorizontalAlignment.Right; dur.VerticalAlignment = VerticalAlignment.Bottom; dur.Margin = new Thickness(0, 0, 6, 10);
-        g.Children.Add(dur);
-        CarregarQuandoVisivel(capa, m, img, () => { if (Miniaturas.Duracao(m) is { } dd) { ((TextBlock)dur.Child!).Text = Tempo(dd); dur.IsVisible = true; } });
-        var b = new Button
-        {
-            Classes = { "cartao" }, Width = 262, Padding = new Thickness(6), Margin = new Thickness(0, 0, 14, 14),
-            Content = Ui.Pilha(4, Orientation.Vertical, capa, Ui.Linha(m.Titulo, 13, FontWeight.SemiBold),
-                Ui.Linha($"{Tamanho(m.Tamanho)} · {Data(m.Data)}", 12, FontWeight.Normal, "tenue")),
-        };
-        ToolTip.SetTip(b, m.Titulo);
-        b.Click += (_, _) => _tocar(lista, i);
-        b.ContextFlyout = MenuVideo(m);
-        return b;
-    }
-
-    private Control LinhaVideo(List<Midia> lista, int i)
-    {
-        var m = lista[i];
-        var capa = Ui.Capa(128, 72, out var img);
-        Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r);
-        ((Grid)capa.Child!).Children.Add(Ui.Progresso(r?.Fracao ?? 0));
-        var info = Ui.Linha("", 12, FontWeight.Normal, "tenue");
-        void Info() => info.Text = string.Join(" · ", new[] { Miniaturas.Duracao(m) is { } d ? Tempo(d) : null, Tamanho(m.Tamanho), Data(m.Data) }.Where(x => x != null));
-        Info();
-        CarregarQuandoVisivel(capa, m, img, Info);
-        var textos = Ui.Pilha(4, Orientation.Vertical, Ui.Linha(m.Titulo, 14, FontWeight.SemiBold), info);
-        textos.VerticalAlignment = VerticalAlignment.Center;
-        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
-        g.Children.Add(capa);
-        Grid.SetColumn(textos, 1); textos.Margin = new Thickness(14, 0);
-        g.Children.Add(textos);
-        var b = new Button { Classes = { "cartao" }, Padding = new Thickness(6), HorizontalAlignment = HorizontalAlignment.Stretch, Content = g };
-        b.Click += (_, _) => _tocar(lista, i);
-        b.ContextFlyout = MenuVideo(m);
-        return b;
-    }
-
-    private MenuFlyout MenuVideo(Midia m)
+    public MenuFlyout? MenuVideo(Midia m)
     {
         var menu = new MenuFlyout();
-        var pasta = new MenuItem { Header = S("Abrir a pasta") };
-        pasta.Click += (_, _) => Ui.Abrir(Path.GetDirectoryName(m.Endereco)!);
-        menu.Items.Add(pasta);
+        if (m.Origem == Origem.Arquivo)
+        {
+            var pasta = new MenuItem { Header = S("Abrir a pasta") };
+            pasta.Click += (_, _) => Ui.Abrir(Path.GetDirectoryName(m.Endereco)!);
+            menu.Items.Add(pasta);
+        }
         if (Prefs.Atual.Posicoes.ContainsKey(m.Endereco))
         {
             var zerar = new MenuItem { Header = S("Marcar como não visto") };
             zerar.Click += (_, _) => { Prefs.Atual.Posicoes.Remove(m.Endereco); Prefs.Atual.Salvar(); Montar(); };
             menu.Items.Add(zerar);
         }
-        return menu;
-    }
-
-    /// <summary>Pede a miniatura só quando o cartão aparece na tela — numa pasta com mil vídeos, não gera mil de uma vez.</summary>
-    public static void CarregarQuandoVisivel(Control alvo, Midia m, Image img, Action? depois = null)
-    {
-        if (Miniaturas.Pronta(m) is { } pronta) { img.Source = pronta; return; }
-        bool pedido = false;
-        void Ver(object? s, Avalonia.Layout.EffectiveViewportChangedEventArgs e)
-        {
-            if (pedido || e.EffectiveViewport.Width <= 0 || !e.EffectiveViewport.Intersects(new Rect(alvo.Bounds.Size))) return;
-            pedido = true;
-            alvo.EffectiveViewportChanged -= Ver;
-            Miniaturas.Pedir(m, bmp => { img.Source = bmp; depois?.Invoke(); });
-        }
-        alvo.EffectiveViewportChanged += Ver;
+        return menu.Items.Count > 0 ? menu : null;
     }
 
     // ───────── vazio ─────────
@@ -361,7 +328,7 @@ public sealed class BibliotecaView : DockPanel
             Ui.Texto(Demonstracao.Credito, 11, FontWeight.Normal, "tenue"));
         p.HorizontalAlignment = HorizontalAlignment.Center;
         p.MaxWidth = 560;
-        p.Margin = new Thickness(0, 50, 0, 0);
+        p.Margin = new Thickness(0, 30, 0, 0);
         foreach (var c in p.Children) c.HorizontalAlignment = HorizontalAlignment.Center;
         foreach (var t in p.Children.OfType<TextBlock>()) t.TextAlignment = TextAlignment.Center;
         return p;

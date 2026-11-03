@@ -34,7 +34,7 @@ public static unsafe class Miniaturas
 
     private static string ArquivoDuracoes => Path.Combine(Caminhos.Cache, "duracoes.json");
 
-    public static double? Duracao(Midia m) => _duracoes.TryGetValue(Nome(m), out var d) ? d : null;
+    public static double? Duracao(Midia m) => m.Duracao ?? (_duracoes.TryGetValue(Nome(m), out var d) ? d : null);
 
     /// <summary>A miniatura já pronta, se houver (na memória ou no disco), sem enfileirar nada.</summary>
     public static Bitmap? Pronta(Midia m)
@@ -129,6 +129,7 @@ public static unsafe class Miniaturas
 
     private static Bitmap? Gerar(Midia m, string nome)
     {
+        if (m.Origem == Origem.Servidor) return DoServidor(m, nome);
         if (Quadro(m.Endereco, m.Origem != Origem.Arquivo) is not { } q) return null;
         if (q.Duracao > 0) { _duracoes[nome] = q.Duracao; _duracoesSujas = true; }
         fixed (byte* p = q.Pixels)
@@ -137,6 +138,17 @@ public static unsafe class Miniaturas
             try { bmp.Save(Path.Combine(Caminhos.Miniaturas, nome + ".png")); } catch { }
             return bmp;
         }
+    }
+
+    /// <summary>Jellyfin e Emby já têm a imagem de cada vídeo: baixar é mais rápido que abrir o filme pela rede.</summary>
+    private static Bitmap? DoServidor(Midia m, string nome)
+    {
+        if (Rede.Contas.Partes(m.Endereco) is not { } p) return null;
+        var bytes = new Rede.ServidorDeMidia(p.conta).Imagem(p.resto, Largura).GetAwaiter().GetResult();
+        if (bytes == null) return null;
+        var bmp = Bitmap.DecodeToWidth(new MemoryStream(bytes), Largura);
+        try { bmp.Save(Path.Combine(Caminhos.Miniaturas, nome + ".png")); } catch { }
+        return bmp;
     }
 
     public sealed record Captura(byte[] Pixels, int Largura, int Altura, double Duracao);
@@ -151,10 +163,13 @@ public static unsafe class Miniaturas
         var mpv = _mpv!;
         var tam = stackalloc int[2];
         var ps = stackalloc RenderParam[5];
+        // WebDAV: a URL de verdade e a senha no cabeçalho; os outros passam como estão
+        var (url, cabecalho) = Rede.Contas.ParaMpv(endereco);
+        mpv.SetString("http-header-fields", cabecalho ?? "");
         foreach (var onde in new[] { "33%", "50%" })
         {
             mpv.SetString("start", onde);
-            mpv.Command("loadfile", endereco, "replace");
+            mpv.Command("loadfile", url, "replace");
             if (!Esperar(mpv, remoto ? 25 : 10)) { mpv.Command("stop"); return null; }
             double dur = mpv.GetDouble("duration") ?? 0;
             long w = mpv.GetLong("dwidth") ?? 0, h = mpv.GetLong("dheight") ?? 0;

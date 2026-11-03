@@ -14,8 +14,8 @@ using static LibertyX.Player.Core.Textos;
 namespace LibertyX.Player.Views;
 
 /// <summary>
-/// A janela: a barra de cima (Vídeos, Rede, Ajustes), a tela escolhida, e o player por cima de
-/// tudo quando um vídeo toca. Arrastar arquivos para a janela toca; um .srt solto sobre o player
+/// A janela: a barra de cima com as abas do celular (Início, Arquivos, Procurar, Ajustes), a tela
+/// escolhida, e o player por cima de tudo quando um vídeo toca. Arrastar arquivos para a janela toca; um .srt solto sobre o player
 /// vira legenda.
 /// </summary>
 public sealed class MainWindow : Window
@@ -23,12 +23,13 @@ public sealed class MainWindow : Window
     private readonly MpvCore _mpv;
     private PlayerView _player = null!;
     private BibliotecaView _biblioteca = null!;
-    private RedeView _rede = null!;
+    private ArquivosView _arquivos = null!;
+    private ProcurarView _procurar = null!;
     private AjustesView _ajustes = null!;
     private Panel _casca = null!;
     private ContentControl _tela = null!;
     private readonly Dictionary<string, Button> _abas = [];
-    private string _aba = "videos";
+    private string _aba = "inicio";
     private WindowState _antesDaTelaCheia = WindowState.Normal;
     private (PixelPoint pos, Size tam, WindowState estado)? _antesDaMini;
 
@@ -50,7 +51,7 @@ public sealed class MainWindow : Window
         {
             // fechar a mini janela (Alt+F4, barra de tarefas) é voltar à janela grande, com o vídeo tocando
             if (_antesDaMini != null && !e.IsProgrammatic) { e.Cancel = true; SairDaMini(); return; }
-            _player.SalvarPosicao(); Prefs.Atual.Salvar();
+            _player.Encerrar(); Prefs.Atual.Salvar();
         };
     }
 
@@ -67,8 +68,11 @@ public sealed class MainWindow : Window
         _player.AlternarMiniJanela += AlternarMini;
         _player.TituloMudou += t => Title = $"{t} — LibertyX Player";
 
-        _biblioteca = new BibliotecaView(Tocar, AdicionarPasta, AbrirArquivo);
-        _rede = new RedeView(Tocar, r => ProDialogo.Mostrar(r));
+        _biblioteca = new BibliotecaView(Tocar, AdicionarPasta, AbrirArquivo, AbrirServidor, t => _arquivos.Adicionar(t, smb: t == null));
+        _arquivos = new ArquivosView(Tocar, r => ProDialogo.Mostrar(r), () => _biblioteca.Pastas, AdicionarPasta, _biblioteca.MenuVideo);
+        _arquivos.Abriu += () => Ir("arquivos", raiz: false);
+        _procurar = new ProcurarView(Tocar, () => _biblioteca.Pastas);
+        _biblioteca.Varreu += () => { if (_aba == "arquivos") _arquivos.PastasMudaram(); };
         _ajustes = new AjustesView(Construir, AdicionarPasta, r => ProDialogo.Mostrar(r));
 
         // ── barra de cima ──
@@ -77,7 +81,7 @@ public sealed class MainWindow : Window
         marca.VerticalAlignment = VerticalAlignment.Center;
         marca.Margin = new Thickness(0, 0, 18, 0);
         var nav = Ui.Pilha(4, Orientation.Horizontal);
-        foreach (var (id, nome, icone) in new[] { ("videos", S("Vídeos"), Icones.Biblioteca), ("rede", S("Rede"), Icones.Servidor), ("ajustes", S("Ajustes"), Icones.Ajustes) })
+        foreach (var (id, nome, icone) in new[] { ("inicio", S("Início"), Icones.Biblioteca), ("arquivos", S("Arquivos"), Icones.Pasta), ("procurar", S("Procurar"), Icones.Buscar), ("ajustes", S("Ajustes"), Icones.Ajustes) })
         {
             var b = Ui.Botao(nome, icone, "nav", () => Ir(id));
             _abas[id] = b;
@@ -126,22 +130,44 @@ public sealed class MainWindow : Window
         return b;
     }
 
-    private void Ir(string aba)
+    /// <summary>
+    /// Troca de aba. Pelo botão (<paramref name="raiz"/>), a aba abre do começo — Início é o início,
+    /// Arquivos é a lista de lugares —, como no celular, e não na última pasta deixada aberta.
+    /// </summary>
+    private void Ir(string aba, bool raiz = true)
     {
         _aba = aba;
         foreach (var (id, b) in _abas) b.Classes.Set("ativo", id == aba);
-        if (aba != "rede") _rede.Sair();
+        if (aba != "arquivos") _arquivos.Sair();
+        // a busca e a aba Arquivos leem as pastas da varredura do Início
+        if (aba is "arquivos" or "procurar" && _biblioteca.Pastas.Count == 0) _biblioteca.Varrer();
         switch (aba)
         {
-            case "rede": _tela.Content = _rede; _rede.Entrar(); break;
+            case "arquivos": if (raiz) _arquivos.Raiz(); _tela.Content = _arquivos; _arquivos.Entrar(); break;
+            case "procurar": _tela.Content = _procurar; if (raiz) _procurar.Raiz(); break;
             case "ajustes": _tela.Content = _ajustes; _ajustes.Montar(); break;
-            default: _tela.Content = _biblioteca; _biblioteca.Varrer(); break;
+            default: if (raiz) _biblioteca.Raiz(); _tela.Content = _biblioteca; _biblioteca.Varrer(); break;
         }
     }
 
+    /// <summary>De volta do player: a aba aberta refaz o progresso e o histórico, sem sair do lugar.</summary>
     private void Atualizar()
     {
-        if (_aba == "videos") _biblioteca.Montar();
+        switch (_aba)
+        {
+            case "inicio": _biblioteca.Montar(); break;
+            case "arquivos": _arquivos.Atualizar(); break;
+            case "procurar": _procurar.Atualizar(); break;
+        }
+    }
+
+    /// <summary>Um atalho de servidor do Início: abre na aba Arquivos, já dentro dele.</summary>
+    private void AbrirServidor(object servidor)
+    {
+        if (!Exigir(Pro.Recurso.Rede)) return;
+        Ir("arquivos");
+        if (servidor is Rede.Servidor s) _arquivos.AbrirServidor(s);
+        else if (servidor is Rede.Conta c) _arquivos.AbrirConta(c);
     }
 
     // ───────── tocar ─────────
@@ -149,7 +175,7 @@ public sealed class MainWindow : Window
     public void Tocar(List<Midia> fila, int indice)
     {
         if (fila.Count == 0) return;
-        if (fila.Any(m => m.Origem == Origem.Smb) && !Exigir(Pro.Recurso.Rede)) return;
+        if (fila.Any(m => m.DaRede) && !Exigir(Pro.Recurso.Rede)) return;
         Dialogo.Fechar();
         _casca.IsVisible = false;
         _player.Tocar(fila, indice);
