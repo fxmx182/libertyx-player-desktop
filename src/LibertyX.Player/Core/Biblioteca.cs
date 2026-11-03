@@ -19,6 +19,8 @@ public sealed class Midia
     public string? Pasta { get; init; }
     /// <summary>Em segundos, quando a origem já diz (Jellyfin e Emby); dos outros, a miniatura descobre.</summary>
     public double? Duracao { get; init; }
+    /// <summary>Marcado como visto no Jellyfin/Emby (aqui, ou na TV, no navegador): a capa ganha o ✓.</summary>
+    public bool Visto { get; init; }
 
     /// <summary>De um servidor (SMB, WebDAV, Jellyfin, Emby): é o que pede o Pro.</summary>
     public bool DaRede => Origem is Origem.Smb or Origem.WebDav or Origem.Servidor;

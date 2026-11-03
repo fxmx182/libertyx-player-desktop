@@ -45,6 +45,7 @@ public static class Cartoes
         var g = (Grid)capa.Child!;
         Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r);
         g.Children.Add(Ui.Progresso(r?.Fracao ?? 0));
+        if (m.Visto && r == null) g.Children.Add(MarcaDeVisto());
         var dur = Ui.Selo(Miniaturas.Duracao(m) is { } d ? Tempo(d) : "");
         dur.IsVisible = Miniaturas.Duracao(m) != null;
         dur.HorizontalAlignment = HorizontalAlignment.Right; dur.VerticalAlignment = VerticalAlignment.Bottom; dur.Margin = new Thickness(0, 0, 6, 10);
@@ -67,6 +68,7 @@ public static class Cartoes
         var capa = Ui.Capa(128, 72, out var img);
         Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r);
         ((Grid)capa.Child!).Children.Add(Ui.Progresso(r?.Fracao ?? 0));
+        if (m.Visto && r == null) ((Grid)capa.Child!).Children.Add(MarcaDeVisto(18));
         var info = Ui.Linha(Info(m, true), 12, FontWeight.Normal, "tenue");
         CarregarQuandoVisivel(capa, m, img, () => info.Text = Info(m, true));
         var textos = Ui.Pilha(4, Orientation.Vertical, Ui.Linha(m.Titulo, 14, FontWeight.SemiBold), info);
@@ -79,6 +81,14 @@ public static class Cartoes
         b.Click += (_, _) => tocar(lista, i);
         return b;
     }
+
+    /// <summary>O ✓ dourado no canto da capa: já visto, como no app do Jellyfin.</summary>
+    public static Control MarcaDeVisto(double tamanho = 22) => new Border
+    {
+        Width = tamanho, Height = tamanho, CornerRadius = new CornerRadius(tamanho / 2), Background = Ui.Pincel("Ouro"),
+        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 6, 0),
+        Child = Ui.Icone(Icones.Ok, tamanho * 0.62, Brushes.Black),
+    };
 
     /// <summary>Uma pasta (do computador ou do servidor) na mesma linha dos servidores: ícone, nome, o que tem lá.</summary>
     public static Button Lugar(string icone, string titulo, string? sub, Action abrir, IBrush? cor = null)

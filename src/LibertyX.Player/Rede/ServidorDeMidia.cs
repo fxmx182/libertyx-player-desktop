@@ -177,9 +177,9 @@ public sealed class ServidorDeMidia(Conta conta)
         return conta.Endereco.TrimEnd('/') + caminho + (q.Length > 0 ? "?" + q : "");
     }
 
-    private async Task<string> PedirTexto(string caminho, IEnumerable<(string, string)> consulta, string? corpoJson, CancellationToken ct = default)
+    private async Task<string> PedirTexto(string caminho, IEnumerable<(string, string)> consulta, string? corpoJson, CancellationToken ct = default, HttpMethod? metodo = null)
     {
-        using var pedido = new HttpRequestMessage(corpoJson != null ? HttpMethod.Post : HttpMethod.Get, Url(caminho, consulta));
+        using var pedido = new HttpRequestMessage(metodo ?? (corpoJson != null ? HttpMethod.Post : HttpMethod.Get), Url(caminho, consulta));
         // o Jellyfin lê Authorization; o Emby, X-Emby-Authorization
         pedido.Headers.TryAddWithoutValidation("Authorization", Cabecalho);
         pedido.Headers.TryAddWithoutValidation("X-Emby-Authorization", Cabecalho);
@@ -258,10 +258,18 @@ public sealed class ServidorDeMidia(Conta conta)
     }
 
     /// <summary>O vídeo como o app toca: endereço sem token, título, duração.</summary>
+    /// <summary>
+    /// A caixinha "Já reproduzido" do app do Jellyfin: marca ou desmarca o item. Numa série ou
+    /// temporada, vale para todos os episódios; e o servidor zera onde parou, então o vídeo sai do
+    /// "Continuar" dos dois jeitos.
+    /// </summary>
+    public Task MarcarVisto(string itemId, bool visto) =>
+        PedirTexto($"/Users/{UsuarioId}/PlayedItems/{itemId}", [], visto ? "{}" : null, metodo: visto ? HttpMethod.Post : HttpMethod.Delete);
+
     public Midia ParaTocar(Item i) => new()
     {
         Endereco = Contas.EnderecoMidia(conta, i.Id), Titulo = i.Serie != null && i.Tipo == "Episode" ? $"{i.Serie} · {i.Titulo}" : i.Titulo,
-        Origem = Origem.Servidor, Data = i.Criado, Duracao = i.Duracao, Pasta = i.Serie ?? conta.Nome,
+        Origem = Origem.Servidor, Data = i.Criado, Duracao = i.Duracao, Pasta = i.Serie ?? conta.Nome, Visto = i.Visto,
     };
 
     /// <summary>Episódio toca com a temporada em volta, para o "próximo" do player ir ao episódio seguinte.</summary>

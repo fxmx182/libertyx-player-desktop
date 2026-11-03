@@ -547,7 +547,8 @@ public sealed class ArquivosView : DockPanel
                 _corpo.Children.Add(w);
             }
             // a ordem é a do servidor (temporada, episódio): é a fila do "próximo"
-            if (videos.Count > 0) _corpo.Children.Add(Cartoes.Videos(videos, _tocar));
+            var porEndereco = itens.Where(i => i.EhVideo).ToDictionary(i => Contas.EnderecoMidia(n.Conta, i.Id));
+            if (videos.Count > 0) _corpo.Children.Add(Cartoes.Videos(videos, _tocar, m => porEndereco.TryGetValue(m.Endereco, out var i) ? MenuDoVisto(s, i) : null));
         }, n.Conta);
     }
 
@@ -568,6 +569,7 @@ public sealed class ArquivosView : DockPanel
             Cartoes.CarregarQuandoVisivel(capa, m, img);
         }
         else Cartoes.ImagemDoServidor(s, i.Id, img);
+        if (i.Visto && i.NaoVistos == null && (m == null || !Prefs.Atual.Posicoes.ContainsKey(m.Endereco))) g.Children.Add(Cartoes.MarcaDeVisto());
         string? selo = i.Episodio ?? (i.NaoVistos is { } nv ? nv.ToString(Textos.Cultura) : null);
         if (selo != null)
         {
@@ -585,6 +587,7 @@ public sealed class ArquivosView : DockPanel
             Content = Ui.Pilha(4, Orientation.Vertical, capa, Ui.Linha(titulo, 13, FontWeight.SemiBold), Ui.Linha(sub, 12, FontWeight.Normal, "tenue")),
         };
         ToolTip.SetTip(botao, i.Titulo);
+        botao.ContextFlyout = MenuDoVisto(s, i);
         botao.Click += async (_, _) =>
         {
             if (!i.EhVideo) { Ir(new NoServidor(s.Conta, i)); return; }
@@ -595,4 +598,39 @@ public sealed class ArquivosView : DockPanel
         };
         return botao;
     }
+
+    /// <summary>
+    /// Botão direito num filme, série, temporada ou episódio: a caixinha "Já reproduzido", como no
+    /// app do servidor e no LibertyX do celular. A tela recarrega quando o servidor confirma.
+    /// </summary>
+    private MenuFlyout? MenuDoVisto(ServidorDeMidia s, Item i)
+    {
+        if (!i.EhVideo && i.Tipo is not ("Series" or "Season" or "BoxSet")) return null;
+        // a caixinha à mostra, marcada ou não, como no celular (o ToggleType só desenha o ✓)
+        var visto = new MenuItem { Header = S("Já reproduzido"), Icon = Caixinha(i.Visto) };
+        visto.Click += async (_, _) =>
+        {
+            try { await s.MarcarVisto(i.Id, !i.Visto); }
+            catch (Exception e)
+            {
+                Dialogo.Mostrar(Ui.Pilha(14, Orientation.Vertical, Ui.Texto(i.Titulo, 18, FontWeight.ExtraBold),
+                    Ui.Texto(e is ErroDeServidor ? e.Message : F("Não consegui conectar: {0}", e.Message), 14, FontWeight.Normal, "apagado"),
+                    Ui.Botao(S("Fechar"), null, "vidro", Dialogo.Fechar)));
+                return;
+            }
+            // o servidor zera onde parou nos dois sentidos; a marca daqui segue, ou a capa voltaria com a barrinha
+            if (Prefs.Atual.Posicoes.Remove(Contas.EnderecoMidia(s.Conta, i.Id))) Prefs.Atual.Salvar();
+            Montar();
+        };
+        var menu = new MenuFlyout();
+        menu.Items.Add(visto);
+        return menu;
+    }
+
+    private static Border Caixinha(bool marcada) => new()
+    {
+        Width = 18, Height = 18, CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(marcada ? 0 : 1.5),
+        BorderBrush = Ui.Pincel("Apagado"), Background = marcada ? Ui.Pincel("Ouro") : Brushes.Transparent,
+        Child = marcada ? Ui.Icone(Icones.Ok, 12, Brushes.Black) : null,
+    };
 }
