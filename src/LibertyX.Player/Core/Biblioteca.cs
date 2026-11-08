@@ -21,6 +21,8 @@ public sealed class Midia
     public double? Duracao { get; init; }
     /// <summary>Marcado como visto no Jellyfin/Emby (aqui, ou na TV, no navegador): a capa ganha o ✓.</summary>
     public bool Visto { get; init; }
+    /// <summary>Um canal de TV ao vivo do Jellyfin: sem "onde parou", sem histórico, sem legenda ao lado.</summary>
+    public bool AoVivo { get; init; }
 
     /// <summary>De um servidor (SMB, WebDAV, Jellyfin, Emby): é o que pede o Pro.</summary>
     public bool DaRede => Origem is Origem.Smb or Origem.WebDav or Origem.Servidor;

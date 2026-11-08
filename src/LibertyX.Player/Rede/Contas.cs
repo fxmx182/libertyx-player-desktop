@@ -126,7 +126,13 @@ public static class Contas
             var dav = new WebDav(p.conta);
             return (dav.Url(p.resto, false).ToString(), dav.Autorizacao is { } a ? "Authorization: " + a : null);
         }
-        return (new ServidorDeMidia(p.conta).UrlDoVideo(p.resto), null);
+        // Jellyfin/Emby: o canal ao vivo já aberto, a versão convertida pelo servidor ou o original
+        if (Conversoes.Canal(p.resto) is { } canal) return (canal, null);
+        var s = new ServidorDeMidia(p.conta);
+        if (Qualidade.Da(p.conta.Id) is > 0 and var kbps)
+            return (s.UrlDaConversao(p.resto, kbps, Conversoes.Comecar(p.resto), Conversoes.Audio(p.resto)), null);
+        Conversoes.Encerrar(p.resto);
+        return (s.UrlDoVideo(p.resto), null);
     }
 
     /// <summary>

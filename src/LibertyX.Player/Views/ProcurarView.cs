@@ -20,14 +20,15 @@ public sealed class ProcurarView : DockPanel
 {
     private readonly Action<List<Midia>, int> _tocar;
     private readonly Func<List<PastaDeVideos>> _pastas;
+    private readonly Action<Conta, ServidorDeMidia.Item> _abrirNoServidor;
     private readonly TextBox _campo;
     private readonly StackPanel _corpo = new() { Spacing = 14, Margin = new Thickness(28, 6, 28, 28) };
     private CancellationTokenSource? _cts;
     private string _termo = "";
 
-    public ProcurarView(Action<List<Midia>, int> tocar, Func<List<PastaDeVideos>> pastas)
+    public ProcurarView(Action<List<Midia>, int> tocar, Func<List<PastaDeVideos>> pastas, Action<Conta, ServidorDeMidia.Item> abrirNoServidor)
     {
-        _tocar = tocar; _pastas = pastas;
+        _tocar = tocar; _pastas = pastas; _abrirNoServidor = abrirNoServidor;
         _campo = new TextBox
         {
             Watermark = S("Filme, episódio, nome do arquivo…"), FontSize = 16, MinHeight = 44, Width = 560, HorizontalAlignment = HorizontalAlignment.Left,
@@ -103,8 +104,8 @@ public sealed class ProcurarView : DockPanel
             {
                 _corpo.Children.Add(Ui.Pilha(8, Orientation.Horizontal, Ui.Texto(s.Conta.Nome, 17, FontWeight.Bold), Ui.Linha(itens.Count.ToString(Textos.Cultura), 13, FontWeight.Medium, "apagado")));
                 var midias = itens.Select(s.ParaTocar).ToList();
-                // episódio toca com a temporada em volta, para o "próximo" seguir a série
-                _corpo.Children.Add(Cartoes.Videos(midias, async (_, k) => { var (fila, i) = await s.Fila(itens[k]); _tocar(fila, i); }));
+                // filme, episódio e série abrem a página deles no servidor, como no celular
+                _corpo.Children.Add(Cartoes.Videos(midias, (_, k) => _abrirNoServidor(s.Conta, itens[k])));
             }
             SemNada(locais.Count + t.Result.Sum(r => r.itens.Count));
         }));

@@ -188,6 +188,43 @@
       <Setter Property="CornerRadius" Value="18" />
       <Setter Property="Padding" Value="20" />
     </Style>
+    <Style Selector="Button.redondo">
+      <Setter Property="Background" Value="{StaticResource Vidro}" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.redondo:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource VidroForte}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OuroBorda}" />
+    </Style>
+    <Style Selector="Button.redondoouro">
+      <Setter Property="Background" Value="{StaticResource OuroBotao}" />
+    </Style>
+    <Style Selector="Button.redondoouro:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FFE070" />
+    </Style>
+    <Style Selector="ToggleButton.filtro">
+      <Setter Property="CornerRadius" Value="17" />
+      <Setter Property="Background" Value="{StaticResource Vidro}" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="ToggleButton.filtro:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource OuroSuave}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OuroBorda}" />
+      <Setter Property="Foreground" Value="{StaticResource Ouro}" />
+    </Style>
+    <Style Selector="Button.pular">
+      <Setter Property="Background" Value="#EBFFFFFF" />
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="Padding" Value="20,11" />
+    </Style>
+    <Style Selector="Button.pular:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FFFFFFFF" />
+    </Style>
+    <Style Selector="TextBlock.escuro">
+      <Setter Property="Foreground" Value="#000000" />
+    </Style>
     <Style Selector="Border.vidroplayer">
       <Setter Property="Background" Value="#E6141317" />
       <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />

@@ -29,6 +29,7 @@ public sealed class MainWindow : Window
     private Panel _casca = null!;
     private ContentControl _tela = null!;
     private readonly Dictionary<string, Button> _abas = [];
+    private StackPanel _nav = null!;
     private string _aba = "inicio";
     private WindowState _antesDaTelaCheia = WindowState.Normal;
     private (PixelPoint pos, Size tam, WindowState estado)? _antesDaMini;
@@ -68,25 +69,23 @@ public sealed class MainWindow : Window
         _player.AlternarMiniJanela += AlternarMini;
         _player.TituloMudou += t => Title = $"{t} — LibertyX Player";
 
-        _biblioteca = new BibliotecaView(Tocar, AdicionarPasta, AbrirArquivo, AbrirServidor, t => _arquivos.Adicionar(t, smb: t == null));
+        _biblioteca = new BibliotecaView(Tocar, AdicionarPasta, AbrirArquivo, t => _arquivos.Adicionar(t, smb: t == null));
         _arquivos = new ArquivosView(Tocar, r => ProDialogo.Mostrar(r), () => _biblioteca.Pastas, AdicionarPasta, _biblioteca.MenuVideo);
-        _arquivos.Abriu += () => Ir("arquivos", raiz: false);
-        _procurar = new ProcurarView(Tocar, () => _biblioteca.Pastas);
+        // servidor que está na barra de abas abre na aba dele; os outros, em Arquivos
+        _arquivos.Abriu += aba => { if (Abas.Escolhidas().Contains(aba)) Ir(aba); else Ir("arquivos", raiz: false); };
+        _procurar = new ProcurarView(Tocar, () => _biblioteca.Pastas, (c, i) => { Ir("arquivos"); _arquivos.AbrirItem(c, i); });
         _biblioteca.Varreu += () => { if (_aba == "arquivos") _arquivos.PastasMudaram(); };
         _ajustes = new AjustesView(Construir, AdicionarPasta, r => ProDialogo.Mostrar(r));
+        Abas.Mudou -= MontarAbas; Abas.Mudou += MontarAbas;
+        Rede.Contas.Mudou -= ServidoresMudaram; Rede.Contas.Mudou += ServidoresMudaram;
+        Rede.Servidores.Mudou -= ServidoresMudaram; Rede.Servidores.Mudou += ServidoresMudaram;
 
         // ── barra de cima ──
-        _abas.Clear();
         var marca = Ui.Pilha(10, Orientation.Horizontal, Ui.Marca(30), Ui.Linha("LibertyX", 18, FontWeight.ExtraBold));
         marca.VerticalAlignment = VerticalAlignment.Center;
         marca.Margin = new Thickness(0, 0, 18, 0);
-        var nav = Ui.Pilha(4, Orientation.Horizontal);
-        foreach (var (id, nome, icone) in new[] { ("inicio", S("Início"), Icones.Biblioteca), ("arquivos", S("Arquivos"), Icones.Pasta), ("procurar", S("Procurar"), Icones.Buscar), ("ajustes", S("Ajustes"), Icones.Ajustes) })
-        {
-            var b = Ui.Botao(nome, icone, "nav", () => Ir(id));
-            _abas[id] = b;
-            nav.Children.Add(b);
-        }
+        var nav = _nav = Ui.Pilha(4, Orientation.Horizontal);
+        MontarAbas();
         var direita = Ui.Pilha(6, Orientation.Horizontal,
             ProSelo(),
             Ui.Botao(S("Abrir arquivo"), Icones.Arquivo, "vidro", AbrirArquivo),
@@ -116,6 +115,37 @@ public sealed class MainWindow : Window
         if (tocando) Dispatcher.UIThread.Post(() => _biblioteca.Varrer());
     }
 
+    /// <summary>Início, as escolhidas em Ajustes › Barra de abas (até três) e Ajustes — como a dock do celular.</summary>
+    private void MontarAbas()
+    {
+        _abas.Clear();
+        _nav.Children.Clear();
+        void Aba(string id, string nome, Control icone)
+        {
+            var b = new Button { Classes = { "nav" }, Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { icone, new TextBlock { Text = nome, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis } } } };
+            b.Click += (_, _) => Ir(id);
+            _abas[id] = b;
+            _nav.Children.Add(b);
+        }
+        Aba("inicio", S("Início"), Ui.Icone(Icones.Biblioteca, 18));
+        foreach (var a in Abas.Escolhidas())
+        {
+            if (a == "arquivos") Aba(a, S("Arquivos"), Ui.Icone(Icones.Pasta, 18));
+            else if (a == "procurar") Aba(a, S("Procurar"), Ui.Icone(Icones.Buscar, 18));
+            else if (a.StartsWith("smb:") && Rede.Servidores.Achar(a[4..]) is { } srv) Aba(a, srv.Nome, Logo("smb"));
+            else if (a.StartsWith("conta:") && Rede.Contas.Achar(a[6..]) is { } c)
+                Aba(a, c.Nome, c.Tipo == Rede.TipoDeConta.Jellyfin ? Logo("jellyfin") : Ui.Icone(c.Tipo == Rede.TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, 18));
+        }
+        Aba("ajustes", S("Ajustes"), Ui.Icone(Icones.Ajustes, 18));
+        foreach (var (id, b) in _abas) b.Classes.Set("ativo", id == _aba);
+    }
+
+    /// <summary>O símbolo do próprio servidor (Jellyfin, SMB), com as cores dele.</summary>
+    public static Control Logo(string nome, double tam = 18) => new Image
+    {
+        Source = new Bitmap(AssetLoader.Open(new Uri($"avares://LibertyXPlayer/Assets/{nome}.png"))), Width = tam, Height = tam,
+    };
+
     private Control ProSelo()
     {
         var b = Ui.Botao(null, null, "plano", () => ProDialogo.Mostrar(null));
@@ -136,6 +166,11 @@ public sealed class MainWindow : Window
     /// </summary>
     private void Ir(string aba, bool raiz = true)
     {
+        // um servidor na barra de abas: a aba Arquivos, aberta direto nele
+        Rede.Servidor? srv = aba.StartsWith("smb:") ? Rede.Servidores.Achar(aba[4..]) : null;
+        Rede.Conta? conta = aba.StartsWith("conta:") ? Rede.Contas.Achar(aba[6..]) : null;
+        if (aba.Contains(':') && srv == null && conta == null) aba = "inicio";
+        if ((srv != null || conta != null) && !Exigir(Pro.Recurso.Rede)) return;
         _aba = aba;
         foreach (var (id, b) in _abas) b.Classes.Set("ativo", id == aba);
         if (aba != "arquivos") _arquivos.Sair();
@@ -146,6 +181,11 @@ public sealed class MainWindow : Window
             case "arquivos": if (raiz) _arquivos.Raiz(); _tela.Content = _arquivos; _arquivos.Entrar(); break;
             case "procurar": _tela.Content = _procurar; if (raiz) _procurar.Raiz(); break;
             case "ajustes": _tela.Content = _ajustes; _ajustes.Montar(); break;
+            case var _ when srv != null || conta != null:
+                _tela.Content = _arquivos;
+                if (raiz && srv != null) _arquivos.AbrirServidor(srv, comoAba: true);
+                else if (raiz) _arquivos.AbrirConta(conta!, comoAba: true);
+                break;
             default: if (raiz) _biblioteca.Raiz(); _tela.Content = _biblioteca; _biblioteca.Varrer(); break;
         }
     }
@@ -156,19 +196,14 @@ public sealed class MainWindow : Window
         switch (_aba)
         {
             case "inicio": _biblioteca.Montar(); break;
-            case "arquivos": _arquivos.Atualizar(); break;
             case "procurar": _procurar.Atualizar(); break;
+            case "arquivos": _arquivos.Atualizar(); break;
+            case var _ when _aba.Contains(':'): _arquivos.Atualizar(); break;
         }
     }
 
-    /// <summary>Um atalho de servidor do Início: abre na aba Arquivos, já dentro dele.</summary>
-    private void AbrirServidor(object servidor)
-    {
-        if (!Exigir(Pro.Recurso.Rede)) return;
-        Ir("arquivos");
-        if (servidor is Rede.Servidor s) _arquivos.AbrirServidor(s);
-        else if (servidor is Rede.Conta c) _arquivos.AbrirConta(c);
-    }
+    /// <summary>Servidor apagado ou renomeado: a aba dele sai ou muda de nome.</summary>
+    private void ServidoresMudaram() => Dispatcher.UIThread.Post(MontarAbas);
 
     // ───────── tocar ─────────
 

@@ -5,6 +5,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LibertyX.Player.Core;
+using LibertyX.Player.Rede;
 using static LibertyX.Player.Core.Textos;
 
 namespace LibertyX.Player.Views;
@@ -33,6 +34,7 @@ public sealed class AjustesView : ScrollViewer
         _corpo.Children.Add(OperatingSystem.IsWindows() ? Secao(S("Aparência"), Linha(S("Idioma"), Idioma()))
             : Secao(S("Aparência"), Linha(S("Idioma"), Idioma()), Linha(S("Tamanho da interface"), Escala())));
         _corpo.Children.Add(Secao(S("Biblioteca"), Pastas()));
+        _corpo.Children.Add(BarraDeAbas());
         _corpo.Children.Add(Secao(S("Reprodução"),
             Chave(S("Decodificação por hardware"), OperatingSystem.IsWindows()
                     ? S("Usa a placa de vídeo (D3D11, DXVA2) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo.")
@@ -43,7 +45,81 @@ public sealed class AjustesView : ScrollViewer
             Linha(S("Salto das setas"), Opcoes([5, 10, 15, 30], Prefs.Atual.Salto, v => Prefs.Atual.Salto = v, v => F("{0} s", v))),
             Linha(S("Velocidade ao segurar o clique"), Opcoes([1.5, 2, 3, 4], Prefs.Atual.VelocidadeSegurar, v => Prefs.Atual.VelocidadeSegurar = v, v => v.ToString("0.#", Textos.Cultura) + "×")),
             Linha(S("Capturas de quadro"), Ui.Linha((Prefs.Atual.PastaCapturas ?? Path.Combine(Caminhos.Imagens, "LibertyX")).Replace(Caminhos.Home, "~"), 13, FontWeight.Normal, "apagado"))));
+        _corpo.Children.Add(Secao(S("Registro de erros"),
+            Ui.Texto(S("Se algo deu errado, abra o registro, clique em Copiar e cole a mensagem na conversa de suporte. Senhas e chaves de acesso não aparecem nele."), 13, FontWeight.Normal, "apagado"),
+            Ui.Botao(S("Ver e copiar o registro"), Icones.Info, "vidro", MostrarRegistro)));
         _corpo.Children.Add(Sobre());
+    }
+
+    // ───────── barra de abas ─────────
+
+    /// <summary>
+    /// Ajustes › Barra de abas, como a dock do celular: o que fica a um clique além de Início e Ajustes.
+    /// Lotada (três escolhidas), as outras chaves apagam até abrir vaga.
+    /// </summary>
+    private Control BarraDeAbas()
+    {
+        var escolhidas = Abas.Escolhidas();
+        bool cheia = escolhidas.Count >= Abas.Maximo;
+        var opcoes = new List<(string aba, string nome, Control icone)>
+        {
+            ("arquivos", S("Arquivos"), Ui.Icone(Icones.Pasta, 20, Ui.Pincel("Ouro"))),
+            ("procurar", S("Procurar"), Ui.Icone(Icones.Buscar, 20, Ui.Pincel("Ouro"))),
+        };
+        foreach (var s in Servidores.Lista) opcoes.Add(("smb:" + s.Id, s.Nome, MainWindow.Logo("smb", 20)));
+        foreach (var c in Contas.Lista)
+            opcoes.Add(("conta:" + c.Id, c.Nome, c.Tipo == TipoDeConta.Jellyfin ? MainWindow.Logo("jellyfin", 20)
+                : Ui.Icone(c.Tipo == TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, 20, Ui.Pincel("Ouro"))));
+        var linhas = new List<Control>();
+        foreach (var (aba, nome, icone) in opcoes)
+        {
+            bool ligada = escolhidas.Contains(aba);
+            var ts = new ToggleSwitch { IsChecked = ligada, OnContent = "", OffContent = "", IsEnabled = ligada || !cheia, VerticalAlignment = VerticalAlignment.Center };
+            ts.IsCheckedChanged += (_, _) => { Abas.Alternar(aba); Avalonia.Threading.Dispatcher.UIThread.Post(Montar); };
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Opacity = ligada || !cheia ? 1 : 0.45 };
+            icone.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(icone);
+            var t = Ui.Linha(nome, 14, FontWeight.Medium);
+            t.VerticalAlignment = VerticalAlignment.Center; t.Margin = new Thickness(14, 0);
+            Grid.SetColumn(t, 1);
+            g.Children.Add(t);
+            Grid.SetColumn(ts, 2);
+            g.Children.Add(ts);
+            linhas.Add(g);
+        }
+        linhas.Add(Ui.Texto(S("Início e Ajustes ficam sempre. Escolha até três: um servidor na barra abre direto nele."), 12, FontWeight.Normal, "tenue"));
+        return Secao(S("Barra de abas"), [.. linhas]);
+    }
+
+    // ───────── registro de erros ─────────
+
+    /// <summary>O registro, com o mais novo embaixo (a caixa já abre lá), para copiar e colar na conversa de suporte.</summary>
+    private void MostrarRegistro()
+    {
+        var texto = Diario.Texto();
+        // colar meio megabyte numa conversa não ajuda ninguém: o que importa é o que veio logo antes do problema
+        const int tetoDaCopia = 60_000;
+        var caixa = new TextBox
+        {
+            Text = texto.Length == 0 ? S("Nada registrado ainda.") : texto, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily("monospace"), FontSize = 11, Height = 420,
+        };
+        caixa.AttachedToVisualTree += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => caixa.CaretIndex = caixa.Text?.Length ?? 0);
+        var copiar = Ui.Botao(S("Copiar"), Icones.Ok, "ouro", null);
+        copiar.IsEnabled = texto.Length > 0;
+        copiar.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } area) return;
+            await area.SetTextAsync(texto.Length > tetoDaCopia ? texto[^tetoDaCopia..] : texto);
+            copiar.Content = S("Copiado");
+        };
+        var limpar = Ui.Botao(S("Limpar"), Icones.Apagar, "plano", () => { Diario.Limpar(); Dialogo.Fechar(); });
+        var botoes = Ui.Pilha(10, Orientation.Horizontal, limpar, Ui.Botao(S("Fechar"), null, "vidro", Dialogo.Fechar), copiar);
+        botoes.HorizontalAlignment = HorizontalAlignment.Right;
+        Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+            Ui.Texto(S("Registro de erros"), 20, FontWeight.ExtraBold),
+            Ui.Texto(S("Clique em Copiar e cole na conversa de suporte. As senhas não aparecem aqui."), 13, FontWeight.Normal, "apagado"),
+            caixa, botoes), 760);
     }
 
     // ───────── Pro ─────────
@@ -145,7 +221,7 @@ public sealed class AjustesView : ScrollViewer
     {
         string mpv = App.Mpv?.GetString("mpv-version") ?? "mpv";
         string ffmpeg = App.Mpv?.GetString("ffmpeg-version") is { } f ? "FFmpeg " + f : "";
-        var diario = Ui.Botao(S("Abrir o registro de erros"), null, "plano", () => Ui.Abrir(Diario.Arquivo));
+        var diario = Ui.Botao(S("Registro de erros"), null, "plano", MostrarRegistro);
         return Secao(S("Sobre"),
             Ui.Texto($"LibertyX Player {Versao()}", 14, FontWeight.Bold),
             Ui.Texto(S("Sua mídia. Sua liberdade."), 13, FontWeight.Normal, "apagado"),

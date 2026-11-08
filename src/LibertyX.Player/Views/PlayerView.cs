@@ -50,6 +50,13 @@ public sealed class PlayerView : Grid
     private readonly Random _sorte = new();
     /// <summary>Quem escolheu a legenda no menu manda nela até o vídeo trocar.</summary>
     private bool _legendaDoUsuario;
+    /// <summary>O áudio e a legenda escolhidos na página do Jellyfin, à espera de as faixas aparecerem.</summary>
+    private EscolhaDeFaixas.Pedido? _pedido;
+    /// <summary>Abertura, créditos e recapitulação marcados no Jellyfin (ver <see cref="ServidorDeMidia.Segmentos"/>).</summary>
+    private List<ServidorDeMidia.Segmento> _segmentos = [];
+    private ServidorDeMidia.Segmento? _segmentoNaTela;
+    private readonly Button _pular;
+    private readonly Border _ajuste;
     /// <summary>O vídeo atual já passou por <see cref="Encerrar"/>; volta a false a cada vídeo.</summary>
     private bool _encerrado;
 
@@ -225,6 +232,23 @@ public sealed class PlayerView : Grid
         };
         Children.Add(_painel);
 
+        // ── pular abertura (Jellyfin): o botão claro no canto, como no app dele e nos de streaming ──
+        _pular = new Button
+        {
+            Classes = { "pular" }, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 28, 120), IsVisible = false,
+        };
+        _pular.Click += (_, _) => PularSegmento();
+        Children.Add(_pular);
+
+        // ── barra do atraso e do tamanho da legenda, no alto ──
+        _ajuste = new Border
+        {
+            Classes = { "vidroplayer" }, Width = 540, Padding = new Thickness(18, 12), HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 70, 0, 0), IsVisible = false,
+        };
+        Children.Add(_ajuste);
+
         _esconder = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2600) };
         _esconder.Tick += (_, _) => { _esconder.Stop(); MostrarControles(false); };
         _hudTimer = new DispatcherTimer();
@@ -323,6 +347,7 @@ public sealed class PlayerView : Grid
             ["screenshot-format"] = "png", ["screenshot-high-bit-depth"] = "no", ["audio-client-name"] = "LibertyX Player",
             ["title"] = "LibertyX Player", ["user-agent"] = "LibertyX Player", ["ytdl"] = "yes", ["msg-level"] = "all=warn",
             ["sub-font"] = "Manrope", ["sub-font-size"] = "44", ["sub-border-size"] = "2.5",
+            ["sub-scale"] = (p.TamanhoDaLegenda / 100.0).ToString(CultureInfo.InvariantCulture),
         };
     }
 
@@ -373,8 +398,14 @@ public sealed class PlayerView : Grid
         _atual = m;
         _pos = 0; _dur = Miniaturas.Duracao(m) ?? 0; _fim = false; _abrindo = true;
         _encerrado = false; _legendaDoUsuario = false;
+        _ajuste.IsVisible = false;
+        // da página do Jellyfin: as faixas escolhidas e o "Continuar"/"Do início" — sem perguntar de novo
+        _pedido = EscolhaDeFaixas.Consumir(m.Endereco);
+        if (_pedido?.Legenda is EscolhaDeFaixas.Legenda.Desligada) _legendaDoUsuario = true;
+        var escolha = EscolhaDeFaixas.ConsumirInicio(m.Endereco);
+        if (escolha == EscolhaDeFaixas.Inicio.DoComeco) Prefs.Atual.Posicoes.Remove(m.Endereco);
         _cortina.IsVisible = true; _cortinaAbre = false;
-        Historico.Registrar(m);
+        if (!m.AoVivo) Historico.Registrar(m);
         _titulo.Text = m.Titulo;
         TituloMudou?.Invoke(m.Titulo);
         _barra.Fracao = 0; _barra.Cache = 0;
@@ -384,17 +415,20 @@ public sealed class PlayerView : Grid
         double inicio = 0;
         if (Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r) && r.Posicao > 10 && (r.Duracao <= 0 || r.Posicao < r.Duracao - 20))
             inicio = r.Posicao;
+        bool perguntar = inicio > 0 && escolha != EscolhaDeFaixas.Inicio.Continuar;
         _mpv.SetString("start", inicio > 0 ? inicio.ToString("0.###", CultureInfo.InvariantCulture) : "none");
-        _mpv.SetFlag("pause", inicio > 0);
-        Propriedade("pause", inicio > 0);
+        _mpv.SetFlag("pause", perguntar);
+        Propriedade("pause", perguntar);
         _mpv.SetString("loop-file", Prefs.Atual.Repetir ? "inf" : "no");
         // a faixa escolhida no vídeo anterior não vale para este; a legenda começa desligada e a regra
         // da legenda forçada decide (ver AplicarRegraDaLegenda)
         _mpv.SetString("aid", "auto");
         _mpv.SetString("sid", "no");
         Carregar(m);
-        if (m.DaRede) BuscarLegendasAoLado(m);
-        if (inicio > 0) PerguntarRetomada(inicio);
+        if (m.DaRede && !m.AoVivo) BuscarLegendasAoLado(m);
+        if (!m.AoVivo) CarregarSegmentos(m); else MostrarPulo(null);
+        Diario.Escrever($"abrir {m.Origem} {(m.DaRede ? m.Titulo : Path.GetFileName(m.Endereco))}" + (inicio > 0 ? $" em {Tempo(inicio)}" : ""));
+        if (perguntar) PerguntarRetomada(inicio);
         _salvarTimer.Start();
         Mexeu();
         Focus();
@@ -444,7 +478,9 @@ public sealed class PlayerView : Grid
                 Hud(S("Não consegui abrir este vídeo.") + (f.Erro != null ? "\n" + f.Erro : ""), 5000);
                 Diario.Escrever($"falha ao abrir {_atual?.Endereco}: {f.Erro}");
                 break;
-            case MpvEvento.Log l when l.Nivel is "error" or "fatal" || Environment.GetEnvironmentVariable("LIBERTYX_LOG") == "1":
+            // os avisos também: é o que veio logo antes de um vídeo não abrir ou travar
+            // (menos o teste da aceleração de vídeo, que avisa a cada vídeo quando a placa não serve e o mpv cai para o processador)
+            case MpvEvento.Log l when (l.Nivel is "error" or "fatal" or "warn" && !RuidoDaAceleracao(l)) || Environment.GetEnvironmentVariable("LIBERTYX_LOG") == "1":
                 Diario.Escrever($"mpv [{l.Prefixo}] {l.Texto}");
                 break;
             case MpvEvento.Propriedade p:
@@ -452,6 +488,10 @@ public sealed class PlayerView : Grid
                 break;
         }
     }
+
+    private static bool RuidoDaAceleracao(MpvEvento.Log l) =>
+        l.Prefixo is "ffmpeg/video" or "vd" && (l.Texto.Contains("hwaccel", StringComparison.OrdinalIgnoreCase) || l.Texto.Contains("no frame!")
+            || l.Texto.Contains("Hardware is lacking") || l.Texto.Contains("Failed setup for format"));
 
     private void Propriedade(string nome, object? v)
     {
@@ -462,6 +502,7 @@ public sealed class PlayerView : Grid
                 if (!_barra.Arrastando && !_soltandoBusca) _barra.Fracao = _dur > 0 ? t / _dur : 0;
                 _tempo.Text = Tempo(t);
                 AvisoAoServidor.Andou(t, _pausado);
+                AtualizarPulo(t);
                 break;
             case "duration" when v is double d:
                 _dur = d;
@@ -492,6 +533,7 @@ public sealed class PlayerView : Grid
                 break;
             case "track-list" when v is string j:
                 _trilhasJson = j;
+                AplicarPedidoDeFaixas();
                 AplicarRegraDaLegenda();
                 break;
             case "demuxer-cache-time" when v is double c:
@@ -613,6 +655,8 @@ public sealed class PlayerView : Grid
         _atual = null;
         _painel.IsVisible = false;
         _retomar.IsVisible = false;
+        _ajuste.IsVisible = false;
+        MostrarPulo(null);
         Fechou?.Invoke();
     }
 
@@ -626,7 +670,7 @@ public sealed class PlayerView : Grid
     {
         if (_atual == null || _encerrado) return;
         _encerrado = true;
-        bool visto = !_abrindo && (acabou || Historico.Visto(_pos, _dur));
+        bool visto = !_abrindo && !_atual.AoVivo && (acabou || Historico.Visto(_pos, _dur));
         if (visto)
         {
             Prefs.Atual.Posicoes.Remove(_atual.Endereco);
@@ -650,7 +694,7 @@ public sealed class PlayerView : Grid
 
     public void SalvarPosicao()
     {
-        if (_atual == null || _dur <= 0 || _abrindo) return;
+        if (_atual == null || _dur <= 0 || _abrindo || _atual.AoVivo) return;
         var p = Prefs.Atual;
         if (_pos > 10 && _pos < _dur - 20 && !Historico.Visto(_pos, _dur))
             p.Posicoes[_atual.Endereco] = new Retomada { Posicao = _pos, Duracao = _dur, Quando = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Titulo = _atual.Titulo };
@@ -689,7 +733,8 @@ public sealed class PlayerView : Grid
             case >= Key.D0 and <= Key.D9 when _dur > 0:
                 Rolar((e.Key - Key.D0) / 10.0 * _dur, false); break;
             case Key.Escape:
-                if (_painel.IsVisible) _painel.IsVisible = false;
+                if (_ajuste.IsVisible) _ajuste.IsVisible = false;
+                else if (_painel.IsVisible) _painel.IsVisible = false;
                 else if (Mini) AlternarMiniJanela?.Invoke();
                 else if (TelaCheia) AlternarTelaCheia?.Invoke();
                 else Fechar();
@@ -877,6 +922,8 @@ public sealed class PlayerView : Grid
             Item(S("Velocidade"), Icones.Velocidade, MostrarVelocidade, lateral: vel.ToString("0.##", Textos.Cultura) + "×"),
             Item(S("Faixa de áudio"), Icones.Audio, () => MostrarTrilhas("audio")),
             Item(S("Legendas"), Icones.Legenda, () => MostrarTrilhas("sub")),
+            Item(S("Atraso da legenda"), Icones.Timer, MostrarAtrasoDaLegenda, lateral: (_mpv.GetDouble("sub-delay") ?? 0) is var sd && sd != 0 ? $"{sd:+0.0;-0.0} s" : null),
+            Item(S("Tamanho da legenda"), Icones.Legenda, MostrarTamanhoDaLegenda, lateral: $"{Prefs.Atual.TamanhoDaLegenda}%"),
             Item(S("Proporção e zoom"), Icones.Proporcao, MostrarProporcao),
             Item(S("Modo noturno"), Icones.Lua, CicloEscuro, lateral: _escurecer > 0 ? $"{Math.Round(_escurecer * 100)}%" : null),
             Item(S("Tempo para dormir"), Icones.Timer, () => { if (Exigir(Core.Pro.Recurso.Dormir)) MostrarDormir(); }, lateral: Core.Pro.Ativo ? dormir : null, pro: true),
@@ -1004,8 +1051,8 @@ public sealed class PlayerView : Grid
         {
             itens.Add(Item(S("Abrir arquivo de legenda…"), Icones.Arquivo, AbrirLegenda));
             double atraso = _mpv.GetDouble("sub-delay") ?? 0;
-            itens.Add(Item(S("Adiantar legenda 0,1 s"), null, () => Atraso("sub-delay", -0.1), fechar: false));
-            itens.Add(Item(S("Atrasar legenda 0,1 s"), null, () => Atraso("sub-delay", 0.1), fechar: false, lateral: atraso != 0 ? $"{atraso:+0.0;-0.0} s" : null));
+            itens.Add(Item(S("Atraso da legenda"), Icones.Timer, MostrarAtrasoDaLegenda, lateral: atraso != 0 ? $"{atraso:+0.0;-0.0} s" : null));
+            itens.Add(Item(S("Tamanho da legenda"), Icones.Legenda, MostrarTamanhoDaLegenda, lateral: $"{Prefs.Atual.TamanhoDaLegenda}%"));
         }
         else
         {
@@ -1030,7 +1077,7 @@ public sealed class PlayerView : Grid
     /// </summary>
     private void AplicarRegraDaLegenda()
     {
-        if (_legendaDoUsuario || _atual == null) return;
+        if (_legendaDoUsuario || _atual == null || _pedido?.Legenda != null) return;
         long? alvo = null, ligada = null;
         try
         {
@@ -1069,6 +1116,154 @@ public sealed class PlayerView : Grid
             });
         });
     }
+
+    /// <summary>
+    /// Aplica o que foi escolhido na página do Jellyfin assim que a faixa pedida existe. As de dentro do
+    /// arquivo aparecem ao abrir; a legenda de fora, só depois de baixada — por isso roda a cada mudança
+    /// das faixas.
+    /// </summary>
+    private void AplicarPedidoDeFaixas()
+    {
+        if (_pedido is not { } pedido) return;
+        var audios = new List<long>();
+        var internas = new List<long>();
+        var externas = new List<(long id, string arquivo)>();
+        long? aid = null, sid = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(_trilhasJson);
+            foreach (var t in doc.RootElement.EnumerateArray())
+            {
+                long id = t.GetProperty("id").GetInt64();
+                bool ext = t.TryGetProperty("external", out var ex) && ex.GetBoolean();
+                bool sel = t.TryGetProperty("selected", out var se) && se.GetBoolean();
+                switch (t.GetProperty("type").GetString())
+                {
+                    case "audio" when !ext: audios.Add(id); if (sel) aid = id; break;
+                    case "sub" when !ext: internas.Add(id); if (sel) sid = id; break;
+                    case "sub": externas.Add((id, t.TryGetProperty("external-filename", out var f) ? f.GetString() ?? "" : "")); if (sel) sid = id; break;
+                }
+            }
+        }
+        catch { return; }
+        if (pedido.Audio is { } pa && pa < audios.Count)
+        {
+            if (aid != audios[pa]) _mpv.SetString("aid", audios[pa].ToString(CultureInfo.InvariantCulture));
+            pedido = pedido with { Audio = null };
+        }
+        if (pedido.Legenda is { } l)
+        {
+            long? alvo = l switch
+            {
+                EscolhaDeFaixas.Legenda.Desligada => -1,
+                EscolhaDeFaixas.Legenda.Interna i => i.Posicao < internas.Count ? internas[i.Posicao] : null,
+                // a de fora vem com o número do servidor no nome (ver ServidorDeMidia.LegendasExternas)
+                EscolhaDeFaixas.Legenda.Externa e => externas.FirstOrDefault(x => Path.GetFileName(x.arquivo).Contains($"({e.Indice}).")) is { id: > 0 } x ? x.id : null,
+                _ => null,
+            };
+            if (alvo != null)
+            {
+                _legendaDoUsuario = true;
+                if (alvo != (sid ?? -1)) _mpv.SetString("sid", alvo < 0 ? "no" : alvo.Value.ToString(CultureInfo.InvariantCulture));
+                pedido = pedido with { Legenda = null };
+            }
+        }
+        _pedido = pedido.Audio != null || pedido.Legenda != null ? pedido : null;
+    }
+
+    private void CarregarSegmentos(Midia m)
+    {
+        _segmentos = [];
+        MostrarPulo(null);
+        if (m.Origem != Origem.Servidor || Contas.Partes(m.Endereco) is not { } p) return;
+        _ = Task.Run(async () =>
+        {
+            var lidos = await new ServidorDeMidia(p.conta).Segmentos(p.resto);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_atual != m) return;
+                _segmentos = lidos.Where(x => x.Tipo is "Intro" or "Outro" or "Recap" or "Preview").ToList();
+            });
+        });
+    }
+
+    private void AtualizarPulo(double t)
+    {
+        if (_segmentos.Count == 0) return;
+        // some no último segundo do trecho: pular dali já não adianta
+        var atual = _segmentos.FirstOrDefault(x => t >= x.Inicio && t < x.Fim - 1);
+        if (atual != _segmentoNaTela) MostrarPulo(atual);
+    }
+
+    private void MostrarPulo(ServidorDeMidia.Segmento? seg)
+    {
+        _segmentoNaTela = seg;
+        _pular.IsVisible = seg != null;
+        if (seg == null) return;
+        _pular.Content = Ui.Pilha(8, Orientation.Horizontal, Ui.Icone(Icones.Avancar, 18, Brushes.Black),
+            Ui.Linha(seg.Tipo switch { "Outro" => S("Pular créditos"), "Recap" => S("Pular recapitulação"), "Preview" => S("Pular prévia"), _ => S("Pular abertura") },
+                15, FontWeight.Bold, "escuro"));
+    }
+
+    private void PularSegmento()
+    {
+        if (_segmentoNaTela is not { } seg) return;
+        MostrarPulo(null);
+        // créditos que vão até o fim levam ao fim — e o fim leva ao próximo episódio
+        double destino = Math.Min(seg.Fim, Math.Max(0, _dur - 0.5));
+        _mpv.CommandAsync("seek", destino.ToString("0.###", CultureInfo.InvariantCulture), "absolute");
+    }
+
+    /// <summary>
+    /// A barra no alto, como a do Jellyfin: o valor grande, a barra, o − e o + para o ajuste fino, e o
+    /// vídeo à vista embaixo para conferir. Esc ou o X fecham.
+    /// </summary>
+    private void MostrarAjuste(string titulo, string dica, double min, double max, double passo, double atual, Func<double, string> texto, Action<double> mudou)
+    {
+        _painel.IsVisible = false;
+        var valor = Ui.Linha(texto(atual), 15, FontWeight.Bold);
+        valor.Foreground = Ui.Pincel("Ouro");
+        var barra = new Slider { Minimum = min, Maximum = max, Value = atual, SmallChange = passo, LargeChange = passo * 10, TickFrequency = passo, IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center };
+        barra.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != Slider.ValueProperty) return;
+            double v = Math.Round(barra.Value / passo) * passo;
+            valor.Text = texto(v);
+            mudou(v);
+        };
+        var menos = Ui.Botao("−", null, "vidro", () => barra.Value = Math.Max(min, barra.Value - passo));
+        var mais = Ui.Botao("+", null, "vidro", () => barra.Value = Math.Min(max, barra.Value + passo));
+        var cab = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+        cab.Children.Add(Ui.Linha(titulo, 15, FontWeight.Bold));
+        Grid.SetColumn(valor, 1); valor.Margin = new Thickness(12, 0); valor.VerticalAlignment = VerticalAlignment.Center;
+        cab.Children.Add(valor);
+        var fechar = Ui.BotaoIcone(Icones.Fechar, S("Fechar (Esc)"), () => _ajuste.IsVisible = false, "plano", 16);
+        Grid.SetColumn(fechar, 2);
+        cab.Children.Add(fechar);
+        var linha = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 6, 0, 2) };
+        linha.Children.Add(menos);
+        Grid.SetColumn(barra, 1); barra.Margin = new Thickness(12, 0);
+        linha.Children.Add(barra);
+        Grid.SetColumn(mais, 2);
+        linha.Children.Add(mais);
+        _ajuste.Child = Ui.Pilha(4, Orientation.Vertical, cab, linha, Ui.Texto(dica, 12, FontWeight.Normal, "tenue"));
+        _ajuste.IsVisible = true;
+    }
+
+    /// <summary>De −30 a +30 s em décimos: legenda de outra edição do mesmo filme chega a vir dezenas de segundos fora.</summary>
+    private void MostrarAtrasoDaLegenda() =>
+        MostrarAjuste(S("Atraso da legenda"), S("A legenda aparece antes da fala? Atrase (+). Depois? Adiante (−)."), -30, 30, 0.1, _mpv.GetDouble("sub-delay") ?? 0,
+            v => (Math.Abs(v) < 0.05 ? 0 : v).ToString("+0.0;-0.0;0.0", Textos.Cultura) + " s", v => _mpv.SetDouble("sub-delay", Math.Round(v, 2)));
+
+    /// <summary>De 50% a 300%; o mpv muda na hora, sem recomeçar o vídeo.</summary>
+    private void MostrarTamanhoDaLegenda() =>
+        MostrarAjuste(S("Tamanho da legenda"), S("Olhe a legenda embaixo: muda na hora."), 50, 300, 10, Prefs.Atual.TamanhoDaLegenda,
+            v => F("Legenda em {0}%", (int)Math.Round(v)), v =>
+            {
+                Prefs.Atual.TamanhoDaLegenda = (int)Math.Round(v);
+                _mpv.SetDouble("sub-scale", v / 100);
+                Prefs.Atual.Salvar();
+            });
 
     private void Atraso(string prop, double delta)
     {

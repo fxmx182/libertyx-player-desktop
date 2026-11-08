@@ -75,6 +75,11 @@ public sealed class Prefs
     public double MiniLargura { get; set; } = 480;      // a mini janela abre do tamanho que ficou
     public double MiniAltura { get; set; } = 270;
     public string? IdDoAparelho { get; set; }           // como o Jellyfin/Emby lista este computador
+    public int TamanhoDaLegenda { get; set; } = 100;    // % (sub-scale do mpv)
+    /// <summary>As abas escolhidas entre Início e Ajustes (Ajustes › Barra de abas). Null: Arquivos e Procurar.</summary>
+    public List<string>? Abas { get; set; }
+    /// <summary>A qualidade de cada conta Jellyfin/Emby, em kbit/s (ver <see cref="Rede.Qualidade"/>); sem a conta, o original.</summary>
+    public Dictionary<string, int> Qualidades { get; set; } = [];
 
     /// <summary>Os vídeos abertos por último, de qualquer origem (ver <see cref="Core.Historico"/>). Null até a 1ª vez.</summary>
     public List<ItemDoHistorico>? Historico { get; set; }

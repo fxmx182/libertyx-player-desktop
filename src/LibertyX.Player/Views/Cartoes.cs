@@ -134,17 +134,29 @@ public static class Cartoes
 
     private static readonly ConcurrentDictionary<string, Bitmap?> Imagens = new();
 
-    /// <summary>A imagem de uma série, temporada ou biblioteca do Jellyfin/Emby (os vídeos vão pelas <see cref="Miniaturas"/>).</summary>
-    public static void ImagemDoServidor(ServidorDeMidia s, string itemId, Image img)
+    /// <summary>
+    /// Uma imagem do Jellyfin/Emby — capa, fundo, logotipo, foto — na ordem dos <paramref name="tipos"/>
+    /// (sem eles: Thumb, Backdrop, Primary, as deitadas primeiro). Pedido que caiu não fica como "sem
+    /// imagem": a próxima vez que a capa aparecer, tenta de novo.
+    /// </summary>
+    public static void ImagemDoServidor(ServidorDeMidia s, string itemId, Image img, string[]? tipos = null, int largura = 480, Action? veio = null)
     {
-        var chave = s.Conta.Id + "/" + itemId;
-        if (Imagens.TryGetValue(chave, out var b)) { img.Source = b; return; }
+        tipos ??= ["Thumb", "Backdrop", "Primary"];
+        var chave = $"{s.Conta.Id}/{itemId}/{string.Join(',', tipos)}/{largura}";
+        if (Imagens.TryGetValue(chave, out var b)) { img.Source = b; if (b != null) veio?.Invoke(); return; }
         _ = Task.Run(async () =>
         {
             Bitmap? bmp = null;
-            try { if (await s.Imagem(itemId, 480) is { } bytes) bmp = Bitmap.DecodeToWidth(new MemoryStream(bytes), 480); } catch { }
-            Imagens[chave] = bmp;
-            Dispatcher.UIThread.Post(() => img.Source = bmp);
+            bool caiu = false;
+            try
+            {
+                var (bytes, falhou) = await s.BaixarImagem(itemId, tipos, largura);
+                caiu = falhou;
+                if (bytes != null) bmp = Bitmap.DecodeToWidth(new MemoryStream(bytes), largura);
+            }
+            catch { caiu = true; }
+            if (bmp != null || !caiu) Imagens[chave] = bmp;
+            Dispatcher.UIThread.Post(() => { img.Source = bmp; if (bmp != null) veio?.Invoke(); });
         });
     }
 }

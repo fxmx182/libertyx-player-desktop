@@ -17,6 +17,7 @@ internal static class Program
             Environment.Exit(Autoteste.Rodar(at + 1 < args.Length ? args[at + 1] : "autoteste.txt", at + 2 < args.Length ? args[at + 2] : null));
             return;
         }
+        Diario.Iniciar(Views.AjustesView.Versao());
         Textos.Iniciar(Prefs.Atual.Idioma);
         if (!OperatingSystem.IsWindows()) Escala.Aplicar(Prefs.Atual.Escala);
         Pro.Iniciar();
@@ -32,6 +33,7 @@ internal static class Program
                 Mpv.MpvGlView.Quebrar(e.Exception.Message);
             });
         app.StartWithClassicDesktopLifetime(args);
+        Diario.Encerrar();
     }
 
     public static AppBuilder BuildAvaloniaApp()

@@ -90,16 +90,17 @@ O que muda no Windows:
   que a pessoa acrescentar. Pastas com capa (o vídeo mais novo), grade ou lista, busca, ordem por
   nome/data/tamanho, ocultar pasta. O Linux não tem um MediaStore: o app varre (8 níveis, ignora
   pastas ocultas e `.nomedia`).
-- **Abas como no celular**: Início (histórico, atalhos dos servidores, pastas), Arquivos (pastas do
-  computador, servidores salvos e os achados na rede), Procurar e Ajustes. O botão da aba sempre
-  abre o começo dela, não a última pasta deixada aberta.
-- **Histórico** de qualquer origem (computador, SMB, WebDAV, Jellyfin) e "continuar de onde
-  parou?" ao reabrir. Visto até o fim (90%, a regra do Jellyfin) sai do histórico, e o próximo
-  episódio entra no lugar.
+- **Abas como a dock do celular**: Início (só o que é local: as pastas do computador) e Ajustes
+  sempre; até três escolhidas em Ajustes › Barra de abas — Arquivos, Procurar e cada servidor
+  (SMB, WebDAV, Jellyfin, Emby, com os símbolos do Jellyfin e do SMB). Sem escolha, Arquivos e
+  Procurar. Servidor na barra abre direto nele. O botão da aba sempre abre o começo dela.
+- **"Continuar de onde parou?"** ao reabrir qualquer origem (computador, SMB, WebDAV, Jellyfin).
+  Visto até o fim (90%, a regra do Jellyfin) apaga a marca.
 - **Player**: barra com quadro exato debaixo do mouse, faixas de áudio e legendas (com nome do
   idioma); ao abrir, só a legenda **forçada** liga (a marcada assim ou com "forced"/"forçada" no
-  nome), a completa começa desligada; legenda externa (botão ou arrastar o `.srt` para a janela), atraso de áudio/legenda,
-  velocidade, proporção e zoom, modo noturno, aleatório, repetir, próximo/anterior na pasta,
+  nome), a completa começa desligada; legenda externa (botão ou arrastar o `.srt` para a janela),
+  atraso da legenda numa barra no alto (−30 a +30 s, em décimos, com − e +), tamanho da legenda
+  (50% a 300%, muda na hora pelo `sub-scale` do mpv), atraso de áudio, velocidade, proporção e zoom, modo noturno, aleatório, repetir, próximo/anterior na pasta,
   tela cheia, informações do vídeo.
 - **Abrir com**: o `.desktop` registra os tipos de vídeo; um arquivo aberto assim toca com a pasta
   dele como fila. Endereço http/https/rtsp/m3u8 também (e sites de vídeo, se houver `yt-dlp`).
@@ -108,15 +109,32 @@ O que muda no Windows:
     pastas, miniaturas e reprodução direto do servidor.
   - **WebDAV / Nextcloud**: do Nextcloud basta o endereço do servidor (o app acha
     `/remote.php/dav/files/<usuário>/`). O mpv toca a URL com a senha no cabeçalho.
-  - **Jellyfin e Emby**: a tela inicial do servidor (continuar, a seguir, recentes), bibliotecas e
-    busca. Toca o **arquivo original** (`static=true`), sem o servidor converter nada. O app avisa
-    o servidor do progresso, então o "continuar" e o "visto" valem nos dois lados. A senha não
-    fica guardada, só o token.
+  - **Jellyfin e Emby**, o mesmo cliente do celular e da TV: a tela inicial do servidor
+    (continuar, a seguir com a capa da série, TV ao vivo, favoritos, recentes), bibliotecas com a
+    ordem e os filtros do servidor (nome, adicionado, lançamento, nota, aleatório; não vistos,
+    favoritos, gênero) e a busca (filmes, séries, episódios). Filme ou episódio abre a **página**
+    dele: fundo e logotipo, data, duração, a que horas termina, nota, ▶ ↻ ✓ ♥ ⋯ (trailer, série,
+    IMDb, TMDB), áudio, legenda e qualidade escolhidos antes de tocar, sinopse, direção e
+    roteiro, os outros episódios da temporada, elenco e extras; "Continuar" e "Do início" não
+    perguntam de novo no player. Páginas da série (temporadas em abas, próximo episódio) e da
+    pessoa (foto, biografia, os títulos dela). Botão direito em qualquer cartão: "Já reproduzido"
+    e "Favorito".
+  - Toca o **arquivo original** (`static=true`), sem o servidor converter nada — ou, escolhendo
+    uma qualidade (20 a 1 Mbps, por conta), a versão HLS que o servidor converte na hora; a
+    conversão e o canal ao vivo são fechados ao sair. **Pular abertura/créditos/recapitulação**
+    pelos segmentos do Jellyfin 10.10+ (com um plugin que os marque). O app avisa o servidor do
+    progresso, então o "continuar" e o "visto" valem nos dois lados.
+  - Entrar com usuário e senha (os usuários visíveis do servidor aparecem para escolher) ou com
+    **Quick Connect**. A senha não fica guardada, só o token; token vencido com a senha em branco
+    entra de novo (usuário sem senha também).
   - Endereço sem `http(s)://` tenta HTTPS primeiro e só cai para HTTP se nem conectar. As
     legendas `.srt/.ass` ao lado do vídeo (e as externas do Jellyfin) vêm junto, como no celular.
   - Os endereços do app (`lxsmb://`, `lxdav://`, `lxmidia://`) são a chave do histórico e das
     marcas e não levam senha nem token: viram URL de verdade só na hora de tocar
     (`Contas.ParaMpv`).
+- **Registro de erros** (Ajustes): o que o player abriu, os avisos e erros do mpv, as exceções e
+  o aviso de que a sessão anterior caiu; **Copiar** leva o fim dele para colar no suporte. Senhas,
+  tokens e chaves saem apagados antes de gravar.
 - **Idiomas**: português, inglês (padrão de qualquer outro) e espanhol; escolha em Ajustes.
 - **Tela 4K**: a mesma detecção de escala do Partition Linux (variáveis do GTK/Qt, `Xft.dpi`,
   tamanho físico do monitor), com escolha manual em Ajustes.
@@ -211,9 +229,11 @@ src/LibertyX.Player/
   Mpv/      LibMpv (P/Invoke), MpvCore (opções, comandos, eventos), MpvGlView/MpvSwView,
             Miniaturas (mpv sem tela, render "sw"), SmbStream (lxsmb:// pelo stream_cb)
   Rede/     Smb (servidores salvos, conexão SMBLibrary), Descoberta (avahi + porta 445),
-            Contas (WebDAV/Jellyfin/Emby + WebDav), ServidorDeMidia (+ AvisoAoServidor), LegendasAoLado
-  Core/     Prefs, Historico, Textos (+ Tabelas en/es), Pro/Chave, Biblioteca, Escala (só Linux), Win (só Windows), Diario
-  Views/    MainWindow, BibliotecaView (Início), ArquivosView, ProcurarView, Cartoes, PlayerView
+            Contas (WebDAV/Jellyfin/Emby + WebDav), ServidorDeMidia (+ AvisoAoServidor), LegendasAoLado,
+            Conversao (Qualidade, Conversoes, EscolhaDeFaixas)
+  Core/     Prefs, Historico, Abas, Textos (+ Tabelas en/es), Pro/Chave, Biblioteca, Escala (só Linux), Win (só Windows), Diario
+  Views/    MainWindow, BibliotecaView (Início), ArquivosView (+ .Servidor: Jellyfin/Emby, + .Paginas:
+            filme, série, pessoa, canais), ProcurarView, Cartoes, PlayerView
             (+ BarraDeTempo), AjustesView/ProDialogo
 packaging/linux/   .desktop, metainfo, AppRun, empacotar.sh (.deb, .rpm, .tar.gz, AppImage), ícones
 packaging/windows/ LibertyXPlayer.iss (Inno Setup), app.ico, artes do instalador

@@ -17,7 +17,7 @@ namespace LibertyX.Player.Views;
 /// do servidor, sem baixar; o Jellyfin e o Emby abrem na tela inicial deles (continuar, a seguir,
 /// recentes).
 /// </summary>
-public sealed class ArquivosView : DockPanel
+public sealed partial class ArquivosView : DockPanel
 {
     /// <summary>Um lugar dentro da aba; a pilha deles é o "voltar".</summary>
     private abstract record Lugar;
@@ -26,6 +26,10 @@ public sealed class ArquivosView : DockPanel
     private sealed record NoWebDav(Conta Conta, string Caminho, string Nome) : Lugar;
     private sealed record InicioDoServidor(Conta Conta) : Lugar;
     private sealed record NoServidor(Conta Conta, Item Item) : Lugar;
+    private sealed record PaginaDoVideo(Conta Conta, Item Item) : Lugar { public EscolhasDaPagina Escolhas { get; } = new(); }
+    private sealed record PaginaDaSerie(Conta Conta, string SerieId, string Nome) : Lugar { public string? Escolhida { get; set; } }
+    private sealed record PaginaDaPessoa(Conta Conta, ServidorDeMidia.Pessoa Pessoa) : Lugar;
+    private sealed record CanaisAoVivo(Conta Conta) : Lugar;
 
     private readonly Action<List<Midia>, int> _tocar;
     private readonly Action<Pro.Recurso> _mostrarPro;
@@ -42,9 +46,11 @@ public sealed class ArquivosView : DockPanel
     private readonly List<Lugar> _pilha = [];
     private ConexaoSmb? _con;
     private int _geracao;
+    /// <summary>Aberta como aba própria de um servidor (barra de abas): o "voltar" para no começo dele.</summary>
+    private int _piso;
 
-    /// <summary>Um servidor foi aberto daqui de dentro (depois de cadastrar): a janela mostra esta aba.</summary>
-    public event Action? Abriu;
+    /// <summary>Um servidor foi aberto daqui de dentro (depois de cadastrar): a janela mostra a aba dele ("smb:…", "conta:…") ou esta.</summary>
+    public event Action<string>? Abriu;
 
     public ArquivosView(Action<List<Midia>, int> tocar, Action<Pro.Recurso> mostrarPro, Func<List<PastaDeVideos>> pastas,
         Action adicionarPasta, Func<Midia, MenuFlyout?> menuLocal)
@@ -80,6 +86,7 @@ public sealed class ArquivosView : DockPanel
     /// <summary>O botão da dock: volta ao começo da aba, como no celular.</summary>
     public void Raiz()
     {
+        _piso = 0;
         _pilha.Clear();
         _con?.Dispose(); _con = null;
         _rolagem.Offset = default;
@@ -91,19 +98,21 @@ public sealed class ArquivosView : DockPanel
     /// <summary>De volta do player: refaz a tela (progresso, "continuar" do servidor) sem perder o lugar.</summary>
     public void Atualizar() => Montar();
 
-    public void AbrirServidor(Servidor s)
+    public void AbrirServidor(Servidor s, bool comoAba = false)
     {
         _busca?.Cancel();
         _pilha.Clear();
+        _piso = comoAba ? 1 : 0;
         _pilha.Add(new NoSmb(s, s.Compartilhamento, ""));
         _rolagem.Offset = default;
         Montar();
     }
 
-    public void AbrirConta(Conta c)
+    public void AbrirConta(Conta c, bool comoAba = false)
     {
         _busca?.Cancel();
         _pilha.Clear();
+        _piso = comoAba ? 1 : 0;
         _pilha.Add(c.Tipo == TipoDeConta.WebDav ? new NoWebDav(c, new WebDav(c).Raiz, c.Nome) : new InicioDoServidor(c));
         _rolagem.Offset = default;
         Montar();
@@ -113,7 +122,7 @@ public sealed class ArquivosView : DockPanel
 
     private void Subir()
     {
-        if (_pilha.Count == 0) return;
+        if (_pilha.Count <= _piso) return;
         _pilha.RemoveAt(_pilha.Count - 1);
         if (!_pilha.Any(l => l is NoSmb)) { _con?.Dispose(); _con = null; }
         Montar();
@@ -123,7 +132,7 @@ public sealed class ArquivosView : DockPanel
     {
         _geracao++;
         _corpo.Children.Clear();
-        _voltar.IsVisible = _pilha.Count > 0;
+        _voltar.IsVisible = _pilha.Count > _piso;
         _adicionar.IsVisible = _pilha.Count == 0 && Pro.Ativo;
         if (_pilha.Count == 0) { _titulo.Text = S("Arquivos"); Inicio(); return; }
         switch (_pilha[^1])
@@ -148,6 +157,22 @@ public sealed class ArquivosView : DockPanel
                 _titulo.Text = $"{s.Conta.Nome} › {s.Item.Titulo}";
                 ListarServidor(s);
                 break;
+            case PaginaDoVideo v:
+                _titulo.Text = $"{v.Conta.Nome} › {(v.Item.Tipo == "Episode" && v.Item.Serie != null ? v.Item.Serie : v.Item.Titulo)}";
+                MostrarPaginaDoVideo(v);
+                break;
+            case PaginaDaSerie ps:
+                _titulo.Text = $"{ps.Conta.Nome} › {ps.Nome}";
+                MostrarPaginaDaSerie(ps);
+                break;
+            case PaginaDaPessoa pp:
+                _titulo.Text = $"{pp.Conta.Nome} › {pp.Pessoa.Nome}";
+                MostrarPaginaDaPessoa(pp);
+                break;
+            case CanaisAoVivo c:
+                _titulo.Text = $"{c.Conta.Nome} › {S("TV ao vivo")}";
+                MostrarCanais(c);
+                break;
         }
     }
 
@@ -168,10 +193,11 @@ public sealed class ArquivosView : DockPanel
         _corpo.Children.Add(Ui.Texto(S("Servidores"), 17, FontWeight.Bold));
         if (!Pro.Ativo) { _corpo.Children.Add(Bloqueado()); return; }
         var wrap = new WrapPanel();
-        foreach (var s in Servidores.Lista) wrap.Children.Add(CartaoServidor(Icones.Servidor, s.Nome, s.Host + (s.Compartilhamento is { Length: > 0 } c ? " / " + c : "") + " · SMB",
+        foreach (var s in Servidores.Lista) wrap.Children.Add(CartaoServidor(MainWindow.Logo("smb", 26), s.Nome, s.Host + (s.Compartilhamento is { Length: > 0 } c ? " / " + c : "") + " · SMB",
             () => AbrirServidor(s), () => Formulario(s, null), () => Servidores.Remover(s)));
-        foreach (var c in Contas.Lista) wrap.Children.Add(CartaoServidor(c.Tipo == TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, c.Nome, c.EnderecoCurto + " · " + c.NomeDoTipo,
-            () => AbrirConta(c), () => FormularioConta(c.Tipo, c), () => Contas.Remover(c)));
+        foreach (var c in Contas.Lista)
+            wrap.Children.Add(CartaoServidor(c.Tipo == TipoDeConta.Jellyfin ? MainWindow.Logo("jellyfin", 26) : Ui.Icone(c.Tipo == TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, 26, Ui.Pincel("Ouro")),
+                c.Nome, c.EnderecoCurto + " · " + c.NomeDoTipo, () => AbrirConta(c), () => FormularioConta(c.Tipo, c), () => Contas.Remover(c)));
         wrap.Children.Add(Cartoes.Lugar(Icones.Adicionar, S("Adicionar servidor"), S("SMB, WebDAV, Jellyfin e Emby"), () => Adicionar(), Ui.Pincel("Apagado")));
         _corpo.Children.Add(wrap);
 
@@ -199,13 +225,13 @@ public sealed class ArquivosView : DockPanel
         return new Border { Classes = { "painel" }, Padding = new Thickness(20), MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Left, Child = p };
     }
 
-    private static Control CartaoServidor(string icone, string nome, string sub, Action abrir, Action editar, Action remover)
+    private static Control CartaoServidor(Control icone, string nome, string sub, Action abrir, Action editar, Action remover)
     {
         var b = new Button
         {
             Classes = { "vidro" }, Margin = new Thickness(0, 0, 12, 12), Width = 270, MinHeight = 68, Padding = new Thickness(16, 12),
             HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Center,
-            Content = Ui.Pilha(14, Orientation.Horizontal, Ui.Icone(icone, 26, Ui.Pincel("Ouro")),
+            Content = Ui.Pilha(14, Orientation.Horizontal, icone,
                 Ui.Pilha(2, Orientation.Vertical, Ui.Linha(nome, 15, FontWeight.Bold), Ui.Linha(sub, 12, FontWeight.Normal, "tenue"))),
         };
         ToolTip.SetTip(b, sub);
@@ -308,7 +334,7 @@ public sealed class ArquivosView : DockPanel
             Servidores.Salvar(novo);
             Dialogo.Fechar();
             AbrirServidor(novo);
-            Abriu?.Invoke();
+            Abriu?.Invoke("smb:" + novo.Id);
         };
         var botoes = Ui.Pilha(10, Orientation.Horizontal, Ui.Botao(S("Cancelar"), null, "vidro", Dialogo.Fechar), salvar);
         botoes.HorizontalAlignment = HorizontalAlignment.Right;
@@ -336,6 +362,94 @@ public sealed class ArquivosView : DockPanel
             Watermark = existente != null && midia ? S("Senha (só para entrar de novo)") : S("Senha"),
         };
         var erro = Ui.Texto("", 13); erro.Foreground = Ui.Pincel("Vermelho"); erro.IsVisible = false;
+        // Jellyfin/Emby: os usuários que o servidor mostra na tela de entrada, para escolher sem digitar
+        var usuarios = new WrapPanel { IsVisible = false };
+        string? lidoDe = null;
+        async void LerUsuarios()
+        {
+            var digitado = endereco.Text?.Trim() ?? "";
+            if (!midia || digitado.Length == 0 || digitado == lidoDe) return;
+            lidoDe = digitado;
+            foreach (var cand in Contas.Candidatos(digitado))
+            {
+                var nomes = await ServidorDeMidia.UsuariosVisiveis(new Conta { Tipo = tipo, Endereco = cand.TrimEnd('/') });
+                if (lidoDe != digitado) return;
+                if (nomes.Count == 0) continue;
+                usuarios.Children.Clear();
+                foreach (var n in nomes)
+                {
+                    var b = Ui.Botao(n, Icones.Pessoa, "vidro", () => { usuario.Text = n; senha.Focus(); }, 16);
+                    b.Margin = new Thickness(0, 0, 8, 8);
+                    usuarios.Children.Add(b);
+                }
+                usuarios.IsVisible = true;
+                return;
+            }
+        }
+        endereco.LostFocus += (_, _) => LerUsuarios();
+        if (existente != null && midia) Dispatcher.UIThread.Post(LerUsuarios);
+        StackPanel form = null!;
+        var quick = Ui.Botao(S("Entrar com Quick Connect"), Icones.Link, "vidro", null);
+        quick.IsVisible = midia && tipo == TipoDeConta.Jellyfin;
+        ToolTip.SetTip(quick, S("Sem digitar a senha: aprove este computador num app do Jellyfin já conectado."));
+        quick.Click += async (_, _) =>
+        {
+            var digitado = endereco.Text?.Trim() ?? "";
+            if (digitado.Length == 0) { erro.Text = S("Digite o endereço do servidor."); erro.IsVisible = true; return; }
+            quick.IsEnabled = false; erro.IsVisible = false;
+            Conta? base_ = null;
+            (string codigo, string segredo) qc = ("", "");
+            string? falha = null;
+            var cands = Contas.Candidatos(digitado).ToList();
+            for (int i = 0; i < cands.Count; i++)
+            {
+                var c = new Conta { Id = existente?.Id ?? Guid.NewGuid().ToString("N")[..10], Tipo = tipo, Endereco = cands[i].TrimEnd('/') };
+                try { qc = await ServidorDeMidia.IniciarQuickConnect(c); base_ = c; break; }
+                catch (Exception e)
+                {
+                    if (Contas.NemConectou(e) && i < cands.Count - 1) continue;
+                    falha = e is ErroDeServidor ? e.Message : S("O servidor não respondeu. Confira o endereço e a porta.");
+                    break;
+                }
+            }
+            quick.IsEnabled = true;
+            if (base_ == null) { erro.Text = falha ?? S("O servidor não respondeu. Confira o endereço e a porta."); erro.IsVisible = true; return; }
+            var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var codigo = Ui.Texto(qc.codigo, 40, FontWeight.ExtraBold);
+            codigo.Foreground = Ui.Pincel("Ouro");
+            codigo.HorizontalAlignment = HorizontalAlignment.Center;
+            bool desistiu = false;
+            void VoltarAoFormulario()
+            {
+                cts.Cancel();
+                if (form.Parent is ScrollViewer sv) sv.Content = null;
+                Dialogo.Mostrar(form, 500);
+            }
+            Dialogo.Mostrar(Ui.Pilha(14, Orientation.Vertical,
+                Ui.Texto(S("Quick Connect"), 20, FontWeight.ExtraBold),
+                Ui.Texto(S("Num app do Jellyfin já conectado (celular, TV, navegador), abra Configurações › Quick Connect e digite este código:"), 13, FontWeight.Normal, "apagado"),
+                codigo,
+                new ProgressBar { IsIndeterminate = true },
+                Ui.Texto(S("Esperando a aprovação…"), 13, FontWeight.Normal, "tenue"),
+                Ui.Botao(S("Cancelar"), null, "vidro", () => { desistiu = true; VoltarAoFormulario(); })), 500);
+            try
+            {
+                var (nomeDoUsuario, idUsuario, token) = await ServidorDeMidia.EsperarQuickConnect(base_, qc.segredo, cts.Token);
+                base_.Usuario = nomeDoUsuario; base_.IdNoServidor = idUsuario; base_.Segredo = token;
+                base_.Nome = string.IsNullOrWhiteSpace(nome.Text) ? base_.EnderecoCurto : nome.Text.Trim();
+                Contas.Salvar(base_);
+                Dialogo.Fechar();
+                AbrirConta(base_);
+                Abriu?.Invoke("conta:" + base_.Id);
+            }
+            catch (Exception e)
+            {
+                if (desistiu) return;
+                VoltarAoFormulario();
+                erro.Text = e is OperationCanceledException ? S("O código expirou. Tente de novo.") : e.Message;
+                erro.IsVisible = true;
+            }
+        };
         var salvar = Ui.Botao(S("Conectar e salvar"), null, "ouro", null);
         salvar.Click += async (_, _) =>
         {
@@ -361,9 +475,19 @@ public sealed class ArquivosView : DockPanel
                 try
                 {
                     if (!midia) pronta = await WebDav.Testar(c);
-                    // editar só o apelido não pede a senha de novo; trocar o servidor ou o usuário pede
+                    // editar só o apelido não pede a senha de novo; trocar o servidor ou o usuário pede. Com a chave
+                    // vencida (servidor refeito, sessão apagada no painel), entra de novo — usuário sem senha também
                     else if (existente != null && existente.Endereco == c.Endereco && existente.Usuario == c.Usuario && c.Segredo.Length == 0)
-                    { c.Segredo = existente.Segredo; pronta = c; }
+                    {
+                        c.Segredo = existente.Segredo;
+                        try { await new ServidorDeMidia(c).Bibliotecas(); }
+                        catch (ErroDeServidor)
+                        {
+                            var (idUsuario, token) = await ServidorDeMidia.Entrar(c, "");
+                            c.IdNoServidor = idUsuario; c.Segredo = token;
+                        }
+                        pronta = c;
+                    }
                     else
                     {
                         var (idUsuario, token) = await ServidorDeMidia.Entrar(c, c.Segredo);
@@ -384,15 +508,16 @@ public sealed class ArquivosView : DockPanel
             Contas.Salvar(pronta);
             Dialogo.Fechar();
             AbrirConta(pronta);
-            Abriu?.Invoke();
+            Abriu?.Invoke("conta:" + pronta.Id);
         };
         var botoes = Ui.Pilha(10, Orientation.Horizontal, Ui.Botao(S("Cancelar"), null, "vidro", Dialogo.Fechar), salvar);
         botoes.HorizontalAlignment = HorizontalAlignment.Right;
-        Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+        var rodape = Ui.Pilha(10, Orientation.Vertical, quick, botoes);
+        Dialogo.Mostrar(form = Ui.Pilha(12, Orientation.Vertical,
             Ui.Texto(existente == null ? F("Novo servidor {0}", nomeTipo) : S("Editar servidor"), 20, FontWeight.ExtraBold),
             Ui.Texto(midia ? S("O app entra com o seu usuário e guarda só a chave de acesso, não a senha. Os vídeos tocam do arquivo original, sem o servidor converter nada.")
                 : S("Do Nextcloud basta o endereço do servidor: o app acha a pasta WebDAV sozinho. Sem https://, tenta primeiro com ele."), 13, FontWeight.Normal, "apagado"),
-            nome, endereco, usuario, senha, erro, botoes), 500);
+            nome, endereco, usuarios, usuario, senha, erro, rodape), 500);
     }
 
     // ───────── SMB ─────────
@@ -490,147 +615,4 @@ public sealed class ArquivosView : DockPanel
                 Endereco = Contas.EnderecoWebDav(d.Conta, e.Caminho), Titulo = Path.GetFileNameWithoutExtension(e.Nome), Origem = Origem.WebDav,
                 Tamanho = e.Tamanho, Data = e.Data, Pasta = d.Conta.Nome,
             })), d.Conta);
-
-    // ───────── Jellyfin e Emby ─────────
-
-    private sealed record Tela(List<Item> Continuar, List<Item> ASeguir, List<(Item biblioteca, List<Item> itens)> Recentes, List<Item> Bibliotecas);
-
-    /// <summary>
-    /// A primeira tela do servidor, como no app dele: o que ficou pela metade, o próximo episódio de
-    /// cada série e o que chegou por último em cada biblioteca; as bibliotecas inteiras embaixo.
-    /// De novo a cada volta do player: o que acabou de ser visto sai do "Continuar".
-    /// </summary>
-    private void MostrarInicioDoServidor(Conta conta)
-    {
-        var s = new ServidorDeMidia(conta);
-        Carregar(async () =>
-        {
-            // os avisos ao servidor ainda a caminho: sem esperar, o "Continuar" viria sem o filme de agora
-            await AvisoAoServidor.EmDia();
-            var bibliotecas = await s.Bibliotecas();
-            var continuar = Tentar(s.Continuar());
-            var aSeguir = Tentar(s.ASeguir());
-            var recentes = bibliotecas.Select(async b => (b, await Tentar(s.Recentes(b)))).ToList();
-            var c = await continuar;
-            var comecados = c.Select(i => i.Id).ToHashSet();
-            return new Tela(c, (await aSeguir).Where(i => !comecados.Contains(i.Id)).ToList(),
-                (await Task.WhenAll(recentes)).Where(r => r.Item2.Count > 0).ToList(), bibliotecas);
-        }, t =>
-        {
-            if (t.Continuar.Count > 0) _corpo.Children.Add(Cartoes.Faixa(S("Continuar assistindo"), t.Continuar.Select(i => CartaoDoServidor(s, i))));
-            if (t.ASeguir.Count > 0) _corpo.Children.Add(Cartoes.Faixa(S("A seguir"), t.ASeguir.Select(i => CartaoDoServidor(s, i))));
-            foreach (var (b, itens) in t.Recentes)
-                _corpo.Children.Add(Cartoes.Faixa(F("Recentes em {0}", b.Nome), itens.Select(i => CartaoDoServidor(s, i)),
-                    Ui.BotaoIcone(Icones.Seta, S("Ver tudo"), () => Ir(new NoServidor(conta, b)), "plano", 18)));
-            if (t.Bibliotecas.Count == 0) { _corpo.Children.Add(Ui.Texto(S("Nenhum vídeo nesta pasta."), 14, FontWeight.Normal, "apagado")); return; }
-            _corpo.Children.Add(Ui.Texto(S("Bibliotecas"), 17, FontWeight.Bold));
-            var w = new WrapPanel();
-            foreach (var b in t.Bibliotecas) { var c = CartaoDoServidor(s, b); c.Margin = new Thickness(0, 0, 14, 14); w.Children.Add(c); }
-            _corpo.Children.Add(w);
-        }, conta);
-    }
-
-    private static async Task<List<Item>> Tentar(Task<List<Item>> t) { try { return await t; } catch { return []; } }
-
-    private void ListarServidor(NoServidor n)
-    {
-        var s = new ServidorDeMidia(n.Conta);
-        Carregar(() => s.Itens(n.Item), itens =>
-        {
-            var pastas = itens.Where(i => i.EhPasta).ToList();
-            var videos = itens.Where(i => i.EhVideo).Select(i => s.ParaTocar(i)).ToList();
-            if (pastas.Count == 0 && videos.Count == 0) { _corpo.Children.Add(Ui.Texto(S("Nenhum vídeo nesta pasta."), 14, FontWeight.Normal, "apagado")); return; }
-            if (pastas.Count > 0)
-            {
-                var w = new WrapPanel();
-                foreach (var p in pastas) { var c = CartaoDoServidor(s, p); c.Margin = new Thickness(0, 0, 14, 14); w.Children.Add(c); }
-                _corpo.Children.Add(w);
-            }
-            // a ordem é a do servidor (temporada, episódio): é a fila do "próximo"
-            var porEndereco = itens.Where(i => i.EhVideo).ToDictionary(i => Contas.EnderecoMidia(n.Conta, i.Id));
-            if (videos.Count > 0) _corpo.Children.Add(Cartoes.Videos(videos, _tocar, m => porEndereco.TryGetValue(m.Endereco, out var i) ? MenuDoVisto(s, i) : null));
-        }, n.Conta);
-    }
-
-    /// <summary>
-    /// Uma capa deitada do servidor: vídeo toca (episódio com a temporada em volta), série, temporada
-    /// e biblioteca abrem. A barrinha é o progresso combinado — o do app e o do servidor.
-    /// </summary>
-    private Button CartaoDoServidor(ServidorDeMidia s, Item i)
-    {
-        var capa = Ui.Capa(250, 141, out var img);
-        var g = (Grid)capa.Child!;
-        Midia? m = i.EhVideo ? s.ParaTocar(i) : null;
-        if (m != null)
-        {
-            double frac = Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r) ? r.Fracao
-                : i.Posicao is { } p && i.Duracao is > 0 ? p / i.Duracao.Value : 0;
-            g.Children.Add(Ui.Progresso(frac));
-            Cartoes.CarregarQuandoVisivel(capa, m, img);
-        }
-        else Cartoes.ImagemDoServidor(s, i.Id, img);
-        if (i.Visto && i.NaoVistos == null && (m == null || !Prefs.Atual.Posicoes.ContainsKey(m.Endereco))) g.Children.Add(Cartoes.MarcaDeVisto());
-        string? selo = i.Episodio ?? (i.NaoVistos is { } nv ? nv.ToString(Textos.Cultura) : null);
-        if (selo != null)
-        {
-            var b = Ui.Selo(selo);
-            b.HorizontalAlignment = HorizontalAlignment.Right; b.VerticalAlignment = VerticalAlignment.Bottom; b.Margin = new Thickness(0, 0, 6, 10);
-            g.Children.Add(b);
-        }
-        // episódio: a série em cima, o episódio embaixo — é como se reconhece numa faixa
-        string titulo = i.Tipo == "Episode" && i.Serie != null ? i.Serie : i.Titulo;
-        string sub = i.Tipo == "Episode" && i.Serie != null ? i.Titulo
-            : i.Duracao is { } d ? Tempo(d) : i.Ano?.ToString(Textos.Cultura) ?? "";
-        var botao = new Button
-        {
-            Classes = { "cartao" }, Width = 262, Padding = new Thickness(6),
-            Content = Ui.Pilha(4, Orientation.Vertical, capa, Ui.Linha(titulo, 13, FontWeight.SemiBold), Ui.Linha(sub, 12, FontWeight.Normal, "tenue")),
-        };
-        ToolTip.SetTip(botao, i.Titulo);
-        botao.ContextFlyout = MenuDoVisto(s, i);
-        botao.Click += async (_, _) =>
-        {
-            if (!i.EhVideo) { Ir(new NoServidor(s.Conta, i)); return; }
-            botao.IsEnabled = false;
-            var (fila, k) = await s.Fila(i);
-            botao.IsEnabled = true;
-            _tocar(fila, k);
-        };
-        return botao;
-    }
-
-    /// <summary>
-    /// Botão direito num filme, série, temporada ou episódio: a caixinha "Já reproduzido", como no
-    /// app do servidor e no LibertyX do celular. A tela recarrega quando o servidor confirma.
-    /// </summary>
-    private MenuFlyout? MenuDoVisto(ServidorDeMidia s, Item i)
-    {
-        if (!i.EhVideo && i.Tipo is not ("Series" or "Season" or "BoxSet")) return null;
-        // a caixinha à mostra, marcada ou não, como no celular (o ToggleType só desenha o ✓)
-        var visto = new MenuItem { Header = S("Já reproduzido"), Icon = Caixinha(i.Visto) };
-        visto.Click += async (_, _) =>
-        {
-            try { await s.MarcarVisto(i.Id, !i.Visto); }
-            catch (Exception e)
-            {
-                Dialogo.Mostrar(Ui.Pilha(14, Orientation.Vertical, Ui.Texto(i.Titulo, 18, FontWeight.ExtraBold),
-                    Ui.Texto(e is ErroDeServidor ? e.Message : F("Não consegui conectar: {0}", e.Message), 14, FontWeight.Normal, "apagado"),
-                    Ui.Botao(S("Fechar"), null, "vidro", Dialogo.Fechar)));
-                return;
-            }
-            // o servidor zera onde parou nos dois sentidos; a marca daqui segue, ou a capa voltaria com a barrinha
-            if (Prefs.Atual.Posicoes.Remove(Contas.EnderecoMidia(s.Conta, i.Id))) Prefs.Atual.Salvar();
-            Montar();
-        };
-        var menu = new MenuFlyout();
-        menu.Items.Add(visto);
-        return menu;
-    }
-
-    private static Border Caixinha(bool marcada) => new()
-    {
-        Width = 18, Height = 18, CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(marcada ? 0 : 1.5),
-        BorderBrush = Ui.Pincel("Apagado"), Background = marcada ? Ui.Pincel("Ouro") : Brushes.Transparent,
-        Child = marcada ? Ui.Icone(Icones.Ok, 12, Brushes.Black) : null,
-    };
 }

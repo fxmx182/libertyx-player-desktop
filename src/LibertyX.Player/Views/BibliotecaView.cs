@@ -11,15 +11,14 @@ using static LibertyX.Player.Core.Textos;
 namespace LibertyX.Player.Views;
 
 /// <summary>
-/// O Início: o histórico (de qualquer origem), os atalhos dos servidores salvos e as pastas com
-/// vídeo do computador (capa = o vídeo mais novo) — dentro de cada uma, os vídeos em grade ou em
-/// lista. Igual ao celular, só que varrendo o disco.
+/// O Início: só o que está no computador — as pastas com vídeo (capa = o vídeo mais novo) e, dentro
+/// de cada uma, os vídeos em grade ou em lista. Igual ao celular, só que varrendo o disco; os
+/// servidores ficam na barra de abas (Ajustes › Barra de abas) e na aba Arquivos.
 /// </summary>
 public sealed class BibliotecaView : DockPanel
 {
     private readonly Action<List<Midia>, int> _tocar;
     private readonly Action _adicionarPasta, _abrirArquivo;
-    private readonly Action<object> _abrirServidor;
     private readonly Action<TipoDeConta?> _adicionarServidor;
     private readonly StackPanel _corpo = new() { Spacing = 22, Margin = new Thickness(28, 6, 28, 28) };
     private readonly TextBlock _titulo, _contagem;
@@ -35,10 +34,10 @@ public sealed class BibliotecaView : DockPanel
     public event Action? Varreu;
 
     public BibliotecaView(Action<List<Midia>, int> tocar, Action adicionarPasta, Action abrirArquivo,
-        Action<object> abrirServidor, Action<TipoDeConta?> adicionarServidor)
+        Action<TipoDeConta?> adicionarServidor)
     {
         _tocar = tocar; _adicionarPasta = adicionarPasta; _abrirArquivo = abrirArquivo;
-        _abrirServidor = abrirServidor; _adicionarServidor = adicionarServidor;
+        _adicionarServidor = adicionarServidor;
 
         _voltar = Ui.BotaoIcone(Icones.Voltar, S("Voltar"), Raiz, "plano");
         _voltar.IsVisible = false;
@@ -87,7 +86,6 @@ public sealed class BibliotecaView : DockPanel
         Children.Add(cabecalho);
         _rolagem = new ScrollViewer { Content = _corpo };
         Children.Add(_rolagem);
-        Historico.Mudou += () => { if (_aberta == null && IsVisible) Montar(); };
     }
 
     /// <summary>O botão da dock: volta ao começo da aba, como no celular.</summary>
@@ -137,98 +135,17 @@ public sealed class BibliotecaView : DockPanel
 
         _titulo.Text = S("Início");
         _contagem.Text = total > 0 ? P(total, "{0} vídeo", "{0} vídeos") : "";
-        if (FaixaHistorico() is { } h) _corpo.Children.Add(h);
-        if (FaixaServidores() is { } sv) _corpo.Children.Add(sv);
         if (_pastas.Count == 0)
         {
             if (_varrendo) _corpo.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 200, Margin = new Thickness(0, 40) });
             else _corpo.Children.Add(Vazio());
             return;
         }
-        _corpo.Children.Add(Ui.Texto(S("Pastas"), 17, FontWeight.Bold));
+        _corpo.Children.Add(Ui.Texto(S("Local"), 17, FontWeight.Bold));
         // o botão grade/lista vale também para as pastas da tela inicial
         Panel painel = Prefs.Atual.Lista ? new StackPanel { Spacing = 2 } : new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var p in _pastas) painel.Children.Add(Prefs.Atual.Lista ? LinhaPasta(p) : CartaoPasta(p));
         _corpo.Children.Add(painel);
-    }
-
-    // ───────── histórico ─────────
-
-    /// <summary>Os vídeos abertos por último, de qualquer origem — servidor incluído.</summary>
-    private Control? FaixaHistorico()
-    {
-        var itens = Historico.Itens().Take(20).ToList();
-        if (itens.Count == 0) return null;
-        var cartoes = new List<Control>();
-        foreach (var m in itens)
-        {
-            var capa = Ui.Capa(250, 141, out var img);
-            var g = (Grid)capa.Child!;
-            if (Prefs.Atual.Posicoes.TryGetValue(m.Endereco, out var r))
-            {
-                g.Children.Add(Ui.Progresso(r.Fracao));
-                var resta = Ui.Selo(F("faltam {0}", Tempo(r.Duracao - r.Posicao)));
-                resta.HorizontalAlignment = HorizontalAlignment.Right; resta.VerticalAlignment = VerticalAlignment.Bottom; resta.Margin = new Thickness(0, 0, 6, 10);
-                g.Children.Add(resta);
-            }
-            Cartoes.CarregarQuandoVisivel(capa, m, img);
-            var b = new Button
-            {
-                Classes = { "cartao" }, Width = 262, Padding = new Thickness(6),
-                Content = Ui.Pilha(6, Orientation.Vertical, capa, Ui.Linha(m.Titulo, 13, FontWeight.SemiBold), Ui.Linha(m.Pasta ?? "", 12, FontWeight.Normal, "tenue")),
-            };
-            ToolTip.SetTip(b, m.Titulo);
-            b.Click += (_, _) => TocarComVizinhos(m);
-            var menu = new MenuFlyout();
-            var tirar = new MenuItem { Header = S("Remover do histórico") };
-            tirar.Click += (_, _) => Historico.Remover(m.Endereco);
-            menu.Items.Add(tirar);
-            b.ContextFlyout = menu;
-            cartoes.Add(b);
-        }
-        var limpar = Ui.Botao(S("Limpar"), Icones.Apagar, "plano", () =>
-        {
-            Prefs.Atual.Posicoes.Clear();
-            Historico.Limpar();
-        }, 15);
-        ToolTip.SetTip(limpar, S("Apagar o histórico de reprodução"));
-        return Cartoes.Faixa(S("Histórico"), cartoes, limpar);
-    }
-
-    /// <summary>Os servidores salvos, a um clique — cadastrar fica no + (e na aba Arquivos).</summary>
-    private Control? FaixaServidores()
-    {
-        var cartoes = new List<Control>();
-        foreach (var s in Servidores.Lista)
-            cartoes.Add(Atalho(Icones.Servidor, s.Nome, "SMB", () => _abrirServidor(s)));
-        foreach (var c in Contas.Lista)
-            cartoes.Add(Atalho(c.Tipo == TipoDeConta.WebDav ? Icones.Nuvem : Icones.Servidor, c.Nome, c.NomeDoTipo, () => _abrirServidor(c)));
-        if (cartoes.Count == 0) return null;
-        return Cartoes.Faixa(S("Servidores"), cartoes);
-    }
-
-    private static Button Atalho(string icone, string nome, string tipo, Action abrir)
-    {
-        var b = new Button
-        {
-            Classes = { "vidro" }, Width = 220, Padding = new Thickness(16, 14), HorizontalContentAlignment = HorizontalAlignment.Left,
-            Content = Ui.Pilha(14, Orientation.Horizontal, Ui.Icone(icone, 26, Ui.Pincel("Ouro")),
-                Ui.Pilha(2, Orientation.Vertical, Ui.Linha(nome, 15, FontWeight.Bold), Ui.Linha(tipo, 12, FontWeight.Normal, "tenue"))),
-        };
-        b.Click += (_, _) => abrir();
-        return b;
-    }
-
-    private void TocarComVizinhos(Midia m)
-    {
-        if (m.Origem == Origem.Arquivo)
-        {
-            var viz = _pastas.FirstOrDefault(p => p.Caminho == Path.GetDirectoryName(m.Endereco))?.Videos is { } l
-                ? Biblioteca.Ordenar(l, "nome").ToList() : Biblioteca.Vizinhos(m.Endereco);
-            int i = viz.FindIndex(v => v.Endereco == m.Endereco);
-            if (i >= 0) { _tocar(viz, i); return; }
-        }
-        _tocar([m], 0);
     }
 
     // ───────── pastas ─────────
