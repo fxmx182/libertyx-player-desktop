@@ -343,6 +343,7 @@ public static partial class Textos
         ["Adicionado"] = "Date added",
         ["Lançamento"] = "Release date",
         ["Nota"] = "Rating",
+        ["O servidor não aceita mais a entrada guardada. Clique em Editar servidor e digite a senha de novo."] = "The server no longer accepts the saved sign-in. Click Edit server and enter the password again.",
     };
 
     private static readonly Dictionary<string, string> Es = new()
@@ -697,5 +698,6 @@ public static partial class Textos
         ["Adicionado"] = "Agregado",
         ["Lançamento"] = "Estreno",
         ["Nota"] = "Calificación",
+        ["O servidor não aceita mais a entrada guardada. Clique em Editar servidor e digite a senha de novo."] = "El servidor ya no acepta el acceso guardado. Haz clic en Editar servidor y escribe la contraseña de nuevo.",
     };
 }

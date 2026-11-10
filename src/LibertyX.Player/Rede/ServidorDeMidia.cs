@@ -439,7 +439,7 @@ public sealed class ServidorDeMidia(Conta conta)
         using var r = await Contas.Http.SendAsync(pedido, ct);
         if (r.StatusCode == HttpStatusCode.NotFound) throw NaoEhServidor();
         if (!r.IsSuccessStatusCode) throw r.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-            ? new ErroDeServidor(Textos.S("Usuário ou senha não conferem.")) : ErroDeServidor.Http(r.StatusCode);
+            ? new ErroDeServidor(Textos.S("Usuário ou senha não conferem.")) { Recusou = true } : ErroDeServidor.Http(r.StatusCode);
         return await r.Content.ReadAsStringAsync(ct);
     }
 

@@ -234,8 +234,13 @@
     <Style Selector="TextBox">
       <Setter Property="CornerRadius" Value="10" />
     </Style>
+    <!-- a barra de rolagem sempre à vista: no computador é ela que diz que a página continua -->
     <Style Selector="ScrollViewer">
-      <Setter Property="AllowAutoHide" Value="True" />
+      <Setter Property="AllowAutoHide" Value="False" />
+    </Style>
+    <!-- janela estreita: a barra de cima fica só com os ícones (o nome vai na dica) -->
+    <Style Selector="Border.compacto TextBlock.rotulo">
+      <Setter Property="IsVisible" Value="False" />
     </Style>
   </Application.Styles>
 </Application>

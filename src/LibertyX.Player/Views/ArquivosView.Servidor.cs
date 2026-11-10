@@ -177,10 +177,12 @@ public sealed partial class ArquivosView
             Task.Run(async () => { try { return await s.Generos(biblioteca); } catch { return []; } })
                 .ContinueWith(t => Dispatcher.UIThread.Post(() => { _generos[biblioteca.Id] = t.Result; PorGeneros(t.Result); }));
         }
-        var barra = Ui.Pilha(10, Orientation.Horizontal, ordem, sentido,
-            Alternar(S("Não vistos"), filtro.NaoVistos, v => filtro with { NaoVistos = v }),
-            Alternar(S("Favoritos"), filtro.Favoritos, v => filtro with { Favoritos = v }), genero);
+        // quebra a linha na janela estreita
+        var barra = new WrapPanel();
+        barra.Children.AddRange([ordem, sentido, Alternar(S("Não vistos"), filtro.NaoVistos, v => filtro with { NaoVistos = v }),
+            Alternar(S("Favoritos"), filtro.Favoritos, v => filtro with { Favoritos = v }), genero]);
         if (filtro.Ativo) barra.Children.Add(Ui.Botao(S("Limpar filtros"), null, "plano", () => Mudar(new ServidorDeMidia.Filtro())));
+        foreach (var c in barra.Children) c.Margin = new Thickness(0, 0, 10, 8);
         return barra;
     }
 

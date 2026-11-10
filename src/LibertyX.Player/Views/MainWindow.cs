@@ -30,6 +30,8 @@ public sealed class MainWindow : Window
     private ContentControl _tela = null!;
     private readonly Dictionary<string, Button> _abas = [];
     private StackPanel _nav = null!;
+    private Border _topo = null!;
+    private Control _marca = null!, _direita = null!;
     private string _aba = "inicio";
     private WindowState _antesDaTelaCheia = WindowState.Normal;
     private (PixelPoint pos, Size tam, WindowState estado)? _antesDaMini;
@@ -48,6 +50,7 @@ public sealed class MainWindow : Window
         AddHandler(KeyDownEvent, Tecla, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Construir();
         Opened += (_, _) => _ = ProcurarAtualizacao();
+        PropertyChanged += (_, e) => { if (e.Property == ClientSizeProperty) AjustarBarra(); };
         Closing += (_, e) =>
         {
             // fechar a mini janela (Alt+F4, barra de tarefas) é voltar à janela grande, com o vídeo tocando
@@ -81,21 +84,26 @@ public sealed class MainWindow : Window
         Rede.Servidores.Mudou -= ServidoresMudaram; Rede.Servidores.Mudou += ServidoresMudaram;
 
         // ── barra de cima ──
-        var marca = Ui.Pilha(10, Orientation.Horizontal, Ui.Marca(30), Ui.Linha("LibertyX", 18, FontWeight.ExtraBold));
+        var marca = Ui.Pilha(10, Orientation.Horizontal, Ui.Marca(30), Ui.Linha("LibertyX", 18, FontWeight.ExtraBold, "rotulo"));
+        _marca = marca;
         marca.VerticalAlignment = VerticalAlignment.Center;
         marca.Margin = new Thickness(0, 0, 18, 0);
         var nav = _nav = Ui.Pilha(4, Orientation.Horizontal);
         MontarAbas();
+        var abrir = Ui.Botao(S("Abrir arquivo"), Icones.Arquivo, "vidro", AbrirArquivo);
+        ((StackPanel)abrir.Content!).Children[1].Classes.Add("rotulo");
+        ToolTip.SetTip(abrir, S("Abrir arquivo") + " (Ctrl+O)");
         var direita = Ui.Pilha(6, Orientation.Horizontal,
             ProSelo(),
-            Ui.Botao(S("Abrir arquivo"), Icones.Arquivo, "vidro", AbrirArquivo),
+            abrir,
             Ui.BotaoIcone(Icones.Link, S("Abrir endereço (http, https…)"), AbrirEndereco, "vidro", 18));
         direita.VerticalAlignment = VerticalAlignment.Center;
+        _direita = direita;
         var barra = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(22, 12) };
         barra.Children.Add(marca);
         Grid.SetColumn(nav, 1); barra.Children.Add(nav);
         Grid.SetColumn(direita, 3); barra.Children.Add(direita);
-        var topo = new Border { Child = barra, BorderBrush = Ui.Pincel("VidroBorda"), BorderThickness = new Thickness(0, 0, 0, 1), Background = Ui.Pincel("Superficie") };
+        var topo = _topo = new Border { Child = barra, BorderBrush = Ui.Pincel("VidroBorda"), BorderThickness = new Thickness(0, 0, 0, 1), Background = Ui.Pincel("Superficie") };
         DockPanel.SetDock(topo, Dock.Top);
 
         _tela = new ContentControl();
@@ -112,6 +120,7 @@ public sealed class MainWindow : Window
         raiz.Children.Add(dialogos);
         Content = raiz;
         Ir(_aba);
+        AjustarBarra();
         if (tocando) Dispatcher.UIThread.Post(() => _biblioteca.Varrer());
     }
 
@@ -122,7 +131,8 @@ public sealed class MainWindow : Window
         _nav.Children.Clear();
         void Aba(string id, string nome, Control icone)
         {
-            var b = new Button { Classes = { "nav" }, Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { icone, new TextBlock { Text = nome, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis } } } };
+            var b = new Button { Classes = { "nav" }, Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { icone, new TextBlock { Text = nome, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis, Classes = { "rotulo" } } } } };
+            ToolTip.SetTip(b, nome);
             b.Click += (_, _) => Ir(id);
             _abas[id] = b;
             _nav.Children.Add(b);
@@ -138,6 +148,21 @@ public sealed class MainWindow : Window
         }
         Aba("ajustes", S("Ajustes"), Ui.Icone(Icones.Ajustes, 18));
         foreach (var (id, b) in _abas) b.Classes.Set("ativo", id == _aba);
+        AjustarBarra();
+    }
+
+    /// <summary>
+    /// A barra de cima cabe ou não com os nomes? Mede com eles; não cabendo, fica só com os ícones
+    /// (o nome vai na dica) — a janela estreita, ou cheia de abas, não empurra nada para fora.
+    /// </summary>
+    private void AjustarBarra()
+    {
+        if (_topo == null || _direita == null) return;
+        _topo.Classes.Set("compacto", false);
+        var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        _marca.Measure(infinito); _nav.Measure(infinito); _direita.Measure(infinito);
+        double precisa = _marca.DesiredSize.Width + _nav.DesiredSize.Width + _direita.DesiredSize.Width + 44 + 16;
+        _topo.Classes.Set("compacto", precisa > ClientSize.Width);
     }
 
     /// <summary>O símbolo do próprio servidor (Jellyfin, SMB), com as cores dele.</summary>
@@ -153,7 +178,8 @@ public sealed class MainWindow : Window
         {
             b.IsVisible = Pro.Atual is not Pro.Estado.Comprado;
             b.Content = Ui.Pilha(6, Orientation.Horizontal, Ui.Icone(Icones.Estrela, 16, Ui.Pincel("Ouro")),
-                Ui.Linha(Pro.Atual is Pro.Estado.Teste t ? P(t.DiasRestantes, "Pro grátis · {0} dia", "Pro grátis · {0} dias") : S("Desbloquear o Pro"), 13, FontWeight.Bold));
+                Ui.Linha(Pro.Atual is Pro.Estado.Teste t ? P(t.DiasRestantes, "Pro grátis · {0} dia", "Pro grátis · {0} dias") : S("Desbloquear o Pro"), 13, FontWeight.Bold, "rotulo"));
+            ToolTip.SetTip(b, S("Desbloquear o Pro"));
         }
         Atual();
         Pro.Mudou += () => Dispatcher.UIThread.Post(Atual);

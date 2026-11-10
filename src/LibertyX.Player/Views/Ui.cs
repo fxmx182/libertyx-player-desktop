@@ -114,6 +114,18 @@ public static class Ui
         return b;
     }
 
+    /// <summary>
+    /// <paramref name="c"/> ocupa a largura que houver, até <paramref name="max"/>, encostado à
+    /// esquerda — o que um MaxWidth sozinho não faz (ele centraliza o que sobra).
+    /// </summary>
+    public static Grid Limitar(Control c, double max)
+    {
+        var g = new Grid { ColumnDefinitions = { new ColumnDefinition(GridLength.Star) { MaxWidth = max }, new ColumnDefinition(GridLength.Auto) } };
+        c.HorizontalAlignment = HorizontalAlignment.Stretch;
+        g.Children.Add(c);
+        return g;
+    }
+
     public static StackPanel Pilha(double espaco = 10, Orientation o = Orientation.Vertical, params Control[] filhos)
     {
         var s = new StackPanel { Spacing = espaco, Orientation = o };

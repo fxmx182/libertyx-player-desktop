@@ -596,13 +596,26 @@ public sealed partial class ArquivosView : DockPanel
     {
         int ger = _geracao;
         _corpo.Children.Add(new ProgressBar { IsIndeterminate = true, Width = 200, Margin = new Thickness(0, 40) });
-        Task.Run(ler).ContinueWith(t => Dispatcher.UIThread.Post(() =>
+        Task.Run(async () =>
+        {
+            try { return await ler(); }
+            catch (ErroDeServidor e) when (e.Recusou && conta.EhServidorDeMidia)
+            {
+                // a chave venceu (servidor refeito, sessão apagada no painel): quem entra sem senha entra
+                // de novo sozinho, como no celular; com senha, cai no aviso abaixo
+                var (id, token) = await ServidorDeMidia.Entrar(conta, "");
+                conta.IdNoServidor = id; conta.Segredo = token;
+                Dispatcher.UIThread.Post(() => Contas.Salvar(conta));
+                return await ler();
+            }
+        }).ContinueWith(t => Dispatcher.UIThread.Post(() =>
         {
             if (ger != _geracao) return;
             _corpo.Children.Clear();
             if (t.IsCompletedSuccessfully) { mostrar(t.Result); return; }
             var e = t.Exception?.InnerException ?? t.Exception;
-            Erro(e is ErroDeServidor ? e.Message : F("Não consegui conectar: {0}", e?.Message ?? ""), () => FormularioConta(conta.Tipo, conta));
+            Erro(e is ErroDeServidor { Recusou: true } && conta.EhServidorDeMidia ? S("O servidor não aceita mais a entrada guardada. Clique em Editar servidor e digite a senha de novo.")
+                : e is ErroDeServidor ? e.Message : F("Não consegui conectar: {0}", e?.Message ?? ""), () => FormularioConta(conta.Tipo, conta));
         }));
     }
 

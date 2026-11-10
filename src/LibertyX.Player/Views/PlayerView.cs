@@ -244,8 +244,8 @@ public sealed class PlayerView : Grid
         // ── barra do atraso e do tamanho da legenda, no alto ──
         _ajuste = new Border
         {
-            Classes = { "vidroplayer" }, Width = 540, Padding = new Thickness(18, 12), HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 70, 0, 0), IsVisible = false,
+            Classes = { "vidroplayer" }, MaxWidth = 540, Padding = new Thickness(18, 12), HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(16, 70, 16, 0), IsVisible = false,
         };
         Children.Add(_ajuste);
 

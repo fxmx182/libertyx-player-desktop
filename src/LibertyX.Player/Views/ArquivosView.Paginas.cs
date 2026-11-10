@@ -16,15 +16,22 @@ public sealed partial class ArquivosView
 {
     // ───────── peças comuns ─────────
 
-    /// <summary>O fundo apagando para o preto da página, com o logotipo por cima — a cara que o app do servidor dá às páginas.</summary>
+    /// <summary>
+    /// O fundo do item com o logotipo por cima — a cara que o app do servidor dá às páginas. Como no
+    /// celular deitado: a capa 16:9 vai inteira no centro, com a mesma imagem desfocada dos lados, em
+    /// vez de esticada à largura e cortada em cima e embaixo. A altura acompanha a janela.
+    /// </summary>
     private static Control Cabeca(ServidorDeMidia s, string fundoDe, string? logoDe)
     {
-        var fundo = new Avalonia.Controls.Image { Stretch = Stretch.UniformToFill, VerticalAlignment = VerticalAlignment.Center };
-        var g = new Grid { Height = 380, ClipToBounds = true };
+        var desfocada = new Avalonia.Controls.Image { Stretch = Stretch.UniformToFill, Opacity = 0.5, Effect = new BlurEffect { Radius = 40 } };
+        var capa = new Avalonia.Controls.Image { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center };
+        var g = new Grid { Height = 380, ClipToBounds = true, Background = Ui.Pincel("Superficie") };
         var borda = new Border { CornerRadius = new CornerRadius(18), ClipToBounds = true, Child = g, IsVisible = false };
+        borda.SizeChanged += (_, e) => g.Height = Math.Clamp(e.NewSize.Width * 0.34, 200, 440);
         // sem fundo nenhum no servidor, a página começa no título, sem uma faixa vazia em cima
-        Cartoes.ImagemDoServidor(s, fundoDe, fundo, ["Backdrop", "Thumb", "Primary"], 1280, () => borda.IsVisible = true);
-        g.Children.Add(fundo);
+        Cartoes.ImagemDoServidor(s, fundoDe, capa, ["Backdrop", "Thumb", "Primary"], 1280, () => { desfocada.Source = capa.Source; borda.IsVisible = true; });
+        g.Children.Add(desfocada);
+        g.Children.Add(capa);
         g.Children.Add(new Border
         {
             Background = new LinearGradientBrush
@@ -382,7 +389,7 @@ public sealed partial class ArquivosView
         if (d.Generos.Count > 0) _corpo.Children.Add(Ui.Texto(string.Join(" · ", d.Generos.Take(5)), 13, FontWeight.Normal, "apagado"));
 
         // ── temporadas em abas, episódios da escolhida ──
-        var lista = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 600 };
+        var lista = new StackPanel { Spacing = 8 };
         void MostrarEpisodios(List<Item> eps)
         {
             lista.Children.Clear();
@@ -412,7 +419,7 @@ public sealed partial class ArquivosView
             _corpo.Children.Add(abas);
         }
         MostrarEpisodios(episodios);
-        _corpo.Children.Add(lista);
+        _corpo.Children.Add(Ui.Limitar(lista, 900));
         var elenco = d.PessoasCom("Actor", "GuestStar").Take(30).ToList();
         if (elenco.Count > 0) _corpo.Children.Add(FaixaDoElenco(s, elenco));
     }
@@ -486,7 +493,7 @@ public sealed partial class ArquivosView
         Carregar(() => s.Canais(), canais =>
         {
             if (canais.Count == 0) { _corpo.Children.Add(Ui.Texto(S("Este servidor não tem canais ao vivo."), 14, FontWeight.Normal, "apagado")); return; }
-            var lista = new StackPanel { Spacing = 6, MinWidth = 600, HorizontalAlignment = HorizontalAlignment.Left };
+            var lista = new StackPanel { Spacing = 6 };
             foreach (var c in canais)
             {
                 var logo = new Border { Classes = { "capa" }, Width = 128, Height = 72, Child = LogoDoCanal(s, c) };
@@ -509,7 +516,7 @@ public sealed partial class ArquivosView
                 b.Click += (_, _) => TocarCanal(s, c, b);
                 lista.Children.Add(b);
             }
-            _corpo.Children.Add(lista);
+            _corpo.Children.Add(Ui.Limitar(lista, 900));
         }, pg.Conta);
     }
 }

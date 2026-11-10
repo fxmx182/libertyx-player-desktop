@@ -25,6 +25,10 @@ public sealed class AjustesView : ScrollViewer
         Pro.Mudou += () => Avalonia.Threading.Dispatcher.UIThread.Post(Montar);
     }
 
+    // sem isto o Avalonia procura um tema para "AjustesView", não acha, e a página fica sem a parte
+    // que rola: o conteúdo aparece, mas o que passa da janela nunca chega à tela
+    protected override Type StyleKeyOverride => typeof(ScrollViewer);
+
     public void Montar()
     {
         _corpo.Children.Clear();

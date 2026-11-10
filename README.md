@@ -135,6 +135,10 @@ O que muda no Windows:
 - **Registro de erros** (Ajustes): o que o player abriu, os avisos e erros do mpv, as exceções e
   o aviso de que a sessão anterior caiu; **Copiar** leva o fim dele para colar no suporte. Senhas,
   tokens e chaves saem apagados antes de gravar.
+- **Janela de qualquer tamanho**: a barra de cima fica só com os ícones quando os nomes não cabem
+  (o nome vai na dica), diálogos e listas encolhem até a largura da janela, filtros quebram a
+  linha, e a capa da página do Jellyfin acompanha a largura — inteira no centro, com a mesma
+  imagem desfocada dos lados, como no celular deitado. Barras de rolagem sempre à vista.
 - **Idiomas**: português, inglês (padrão de qualquer outro) e espanhol; escolha em Ajustes.
 - **Tela 4K**: a mesma detecção de escala do Partition Linux (variáveis do GTK/Qt, `Xft.dpi`,
   tamanho físico do monitor), com escolha manual em Ajustes.

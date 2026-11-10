@@ -154,12 +154,15 @@ public static class Contas
 /// <summary>Erro de servidor HTTP com uma frase que diga o que fazer.</summary>
 public sealed class ErroDeServidor(string msg) : Exception(msg)
 {
+    /// <summary>O servidor recusou a entrada (401/403): senha errada ou chave de acesso vencida.</summary>
+    public bool Recusou { get; init; }
+
     public static ErroDeServidor Http(HttpStatusCode codigo) => new((int)codigo switch
     {
         401 or 403 => Textos.S("Usuário ou senha não conferem."),
         404 or 405 => Textos.S("O endereço não é de uma pasta WebDAV."),
         var n => Textos.F("O servidor respondeu com erro {0}.", n),
-    });
+    }) { Recusou = (int)codigo is 401 or 403 };
 }
 
 /// <summary>

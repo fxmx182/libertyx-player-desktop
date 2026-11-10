@@ -31,7 +31,7 @@ public sealed class ProcurarView : DockPanel
         _tocar = tocar; _pastas = pastas; _abrirNoServidor = abrirNoServidor;
         _campo = new TextBox
         {
-            Watermark = S("Filme, episódio, nome do arquivo…"), FontSize = 16, MinHeight = 44, Width = 560, HorizontalAlignment = HorizontalAlignment.Left,
+            Watermark = S("Filme, episódio, nome do arquivo…"), FontSize = 16, MinHeight = 44,
             InnerLeftContent = Ui.Icone(Icones.Buscar, 18, Ui.Pincel("Apagado")), VerticalContentAlignment = VerticalAlignment.Center,
         };
         ((PathIcon)_campo.InnerLeftContent).Margin = new Thickness(12, 0, 4, 0);
@@ -40,7 +40,7 @@ public sealed class ProcurarView : DockPanel
         var cab = Ui.Pilha(8, Orientation.Vertical,
             Ui.Linha(S("Procurar"), 26, FontWeight.ExtraBold),
             Ui.Texto(S("Vídeos do computador e dos servidores Jellyfin e Emby"), 13, FontWeight.Normal, "apagado"),
-            _campo);
+            Ui.Limitar(_campo, 560));
         cab.Margin = new Thickness(28, 18, 28, 12);
         _campo.Margin = new Thickness(0, 6, 0, 0);
         SetDock(cab, Dock.Top);

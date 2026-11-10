@@ -27,8 +27,9 @@ public static class Dialogo
         _camada.Children.Clear();
         _camada.Children.Add(new Border
         {
-            Classes = { "painel" }, Width = largura, MaxHeight = 640, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(24),
+            // na janela estreita encolhe até caber, com uma margem de cada lado
+            Classes = { "painel" }, MaxWidth = largura, MaxHeight = 640, HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(24), Margin = new Thickness(16),
             BoxShadow = BoxShadows.Parse("0 20 60 0 #A0000000"),
             Child = new ScrollViewer { Content = conteudo },
         });
