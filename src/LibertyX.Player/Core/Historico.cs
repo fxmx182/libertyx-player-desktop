@@ -67,7 +67,6 @@ public static class Historico
     /// <summary>Vai para o começo; o mesmo vídeo não aparece duas vezes.</summary>
     public static void Registrar(Midia m)
     {
-        if (m.Endereco == Views.Demonstracao.Midia.Endereco) return;
         var l = Lista;
         l.RemoveAll(i => i.Endereco == m.Endereco);
         l.Insert(0, ItemDoHistorico.De(m));

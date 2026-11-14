@@ -234,15 +234,13 @@ public sealed class BibliotecaView : DockPanel
 
     private Control Vazio()
     {
-        var demo = Ui.Botao(S("Ver a demonstração"), Icones.Play, "vidro", () => _tocar([Demonstracao.Midia], 0));
         var p = Ui.Pilha(16, Orientation.Vertical,
             Ui.Marca(96),
             Ui.Texto(S("Nenhum vídeo por aqui ainda"), 22, FontWeight.ExtraBold),
-            Ui.Texto(S("O LibertyX procura em Vídeos, em Downloads e nos pendrives e HDs conectados. Acrescente outras pastas, abra um arquivo ou veja a demonstração."), 14, FontWeight.Normal, "apagado"),
+            Ui.Texto(S("O LibertyX procura em Vídeos, em Downloads e nos pendrives e HDs conectados. Acrescente outras pastas ou abra um arquivo."), 14, FontWeight.Normal, "apagado"),
             Ui.Pilha(10, Orientation.Horizontal,
                 Ui.Botao(S("Acrescentar pasta"), Icones.Adicionar, "ouro", _adicionarPasta),
-                Ui.Botao(S("Abrir arquivo"), Icones.Arquivo, "vidro", _abrirArquivo), demo),
-            Ui.Texto(Demonstracao.Credito, 11, FontWeight.Normal, "tenue"));
+                Ui.Botao(S("Abrir arquivo"), Icones.Arquivo, "vidro", _abrirArquivo)));
         p.HorizontalAlignment = HorizontalAlignment.Center;
         p.MaxWidth = 560;
         p.Margin = new Thickness(0, 30, 0, 0);
@@ -250,17 +248,4 @@ public sealed class BibliotecaView : DockPanel
         foreach (var t in p.Children.OfType<TextBlock>()) t.TextAlignment = TextAlignment.Center;
         return p;
     }
-}
-
-/// <summary>
-/// Um filme para quem ainda não tem nenhum (e para o revisor de loja): Sintel, filme aberto da
-/// Blender (CC-BY), em MKV com legendas em vários idiomas — toca direto do servidor deles.
-/// </summary>
-public static class Demonstracao
-{
-    public static readonly Midia Midia = new()
-    {
-        Endereco = "https://download.blender.org/demo/movies/Sintel.2010.1080p.mkv", Titulo = "Sintel", Origem = Origem.Url,
-    };
-    public const string Credito = "Sintel © Blender Foundation · CC-BY";
 }
