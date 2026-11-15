@@ -147,7 +147,7 @@ public sealed class ServidorDeMidia(Conta conta)
     }
 
     /// <summary>O arquivo original, sem conversão (static=true).</summary>
-    public string UrlDoVideo(string id) => Url($"/Videos/{id}/stream", [("static", "true"), ("MediaSourceId", id), .. ChaveNaConsulta]);
+    public string UrlDoVideo(string id) => Url($"/Videos/{id}/stream", [("static", "true"), .. FonteNaConsulta(id), .. ChaveNaConsulta]);
 
     /// <summary>
     /// A imagem do item: Thumb e Backdrop são deitadas, como as capas do app; Primary de filme é o
@@ -328,9 +328,9 @@ public sealed class ServidorDeMidia(Conta conta)
     public string UrlDaConversao(string id, int kbps, string sessao, int? audio)
     {
         int largura = kbps >= 10_000 ? 1920 : kbps >= 4_000 ? 1280 : kbps >= 2_000 ? 960 : 640;
-        var q = new List<(string, string)>
+        var q = new List<(string, string)>(FonteNaConsulta(id))
         {
-            ("MediaSourceId", id), ("DeviceId", IdDoAparelho), ("PlaySessionId", sessao), ("VideoCodec", "h264"), ("AudioCodec", "aac"),
+            ("DeviceId", IdDoAparelho), ("PlaySessionId", sessao), ("VideoCodec", "h264"), ("AudioCodec", "aac"),
             ("VideoBitrate", Math.Max(300_000, kbps * 1000 - 192_000).ToString()), ("AudioBitrate", "192000"),
             ("MaxAudioChannels", "2"), ("TranscodingMaxAudioChannels", "2"), ("MaxWidth", largura.ToString()),
             ("SegmentContainer", "ts"), ("MinSegments", "1"), ("BreakOnNonKeyFrames", "true"),
@@ -414,6 +414,12 @@ public sealed class ServidorDeMidia(Conta conta)
         try { await PedirTexto("/LiveStreams/Close", [("LiveStreamId", transmissao)], "{}"); }
         catch { }
     }
+
+    /// <summary>
+    /// A fonte do vídeo. No Jellyfin o id da fonte é o do item (e a conversão exige o parâmetro); no Emby é
+    /// outro (mediasource_…) e o id do item ali dá 400 — sem o parâmetro, o Emby usa a primeira fonte.
+    /// </summary>
+    private (string, string)[] FonteNaConsulta(string id) => conta.Tipo == TipoDeConta.Emby ? [] : [("MediaSourceId", id)];
 
     /// <summary>O Jellyfin novo lê ApiKey; o Emby, api_key. Os dois servem aos dois.</summary>
     private (string, string)[] ChaveNaConsulta => conta.Segredo.Length > 0 ? [("ApiKey", conta.Segredo), ("api_key", conta.Segredo)] : [];
