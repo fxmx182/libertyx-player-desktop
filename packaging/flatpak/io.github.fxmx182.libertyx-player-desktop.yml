@@ -114,8 +114,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/fxmx182/libertyx-player-desktop.git
-        tag: v1.0.15-20261122-0000000
-        commit: '0000000000000000000000000000000000000000'
+        tag: v1.0.15-20261122-8a4e5f1
+        commit: 8a4e5f18f62d6e0e6844cefbfd1db7f546f0a921
         dest: repo
         x-checker-data:
           type: git
@@ -123,8 +123,8 @@ modules:
           is-main-source: true
       - type: archive
         only-arches: [x86_64]
-        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/LibertyXPlayer-linux.tar.gz
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-8a4e5f1/LibertyXPlayer-linux.tar.gz
+        sha256: 34f3e81fcc7b625269f19383a69bc9b92694b30d369108f5a1f756976ae62fdc
         dest: app
         x-checker-data:
           type: json
@@ -133,8 +133,8 @@ modules:
           url-query: '[.[] | select(.tag_name | startswith("v"))][0].assets[] | select(.name == "LibertyXPlayer-linux.tar.gz") | .browser_download_url'
       - type: archive
         only-arches: [aarch64]
-        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/LibertyXPlayer-linux-arm64.tar.gz
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-8a4e5f1/LibertyXPlayer-linux-arm64.tar.gz
+        sha256: 26dcb0bca4f18805731b22cd47aa86ee4329846f73261b653fec5a61eaea2677
         dest: app
         x-checker-data:
           type: json
@@ -142,8 +142,8 @@ modules:
           version-query: '[.[] | select(.tag_name | startswith("v"))][0].tag_name | ltrimstr("v") | split("-")[0]'
           url-query: '[.[] | select(.tag_name | startswith("v"))][0].assets[] | select(.name == "LibertyXPlayer-linux-arm64.tar.gz") | .browser_download_url'
       - type: file
-        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/versao.txt
-        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-8a4e5f1/versao.txt
+        sha256: 1dbebb58376b441b1daec3772161f026dc2c83887aa78a0fdd97817e6fc87e90
         x-checker-data:
           type: json
           url: https://api.github.com/repos/fxmx182/libertyx-player-desktop/releases
