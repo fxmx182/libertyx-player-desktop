@@ -27,6 +27,7 @@ public sealed class BibliotecaView : DockPanel
     private List<PastaDeVideos> _pastas = [];
     private PastaDeVideos? _aberta;
     private bool _varrendo;
+    private int _vezDaVarredura;
     private CancellationTokenSource? _cts;
 
     /// <summary>A última varredura — a aba Arquivos e a busca leem daqui.</summary>
@@ -96,18 +97,21 @@ public sealed class BibliotecaView : DockPanel
         _rolagem.Offset = default;
     }
 
-    public void Varrer()
+    /// <param name="recomecar">Os lugares mudaram (Ajustes): a varredura em curso é jogada fora e começa outra.</param>
+    public void Varrer(bool recomecar = false)
     {
-        if (_varrendo) return;
+        if (_varrendo && !recomecar) return;
         _varrendo = true;
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
+        int vez = ++_vezDaVarredura;
         if (_pastas.Count == 0 && _aberta == null) Montar();
         Task.Run(() => Biblioteca.Varrer(ct), ct).ContinueWith(t =>
         {
             Dispatcher.UIThread.Post(() =>
             {
+                if (vez != _vezDaVarredura) return;   // uma mais nova já está a caminho
                 _varrendo = false;
                 if (t.IsCompletedSuccessfully) _pastas = t.Result;
                 if (_aberta != null) _aberta = _pastas.FirstOrDefault(p => p.Caminho == _aberta.Caminho);
@@ -208,7 +212,14 @@ public sealed class BibliotecaView : DockPanel
             Prefs.Atual.PastasOcultas.Add(p.Caminho); Prefs.Atual.Salvar();
             _pastas.Remove(p); Montar(); Varreu?.Invoke();
         };
-        menu.Items.Add(tocar); menu.Items.Add(abrir); menu.Items.Add(ocultar);
+        var excluir = new MenuItem { Header = S("Não procurar aqui (nem nas subpastas)") };
+        excluir.Click += (_, _) =>
+        {
+            if (!Prefs.Atual.PastasExcluidas.Any(e => Biblioteca.Igual(e, p.Caminho))) Prefs.Atual.PastasExcluidas.Add(p.Caminho);
+            Prefs.Atual.Salvar();
+            _pastas.RemoveAll(o => Biblioteca.Dentro(o.Caminho, p.Caminho)); Montar(); Varreu?.Invoke();
+        };
+        menu.Items.Add(tocar); menu.Items.Add(abrir); menu.Items.Add(ocultar); menu.Items.Add(excluir);
         return menu;
     }
 

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using LibertyX.Player.Core;
 using LibertyX.Player.Rede;
 using static LibertyX.Player.Core.Textos;
@@ -15,12 +16,13 @@ public sealed class AjustesView : ScrollViewer
 {
     private readonly Action _reconstruir;
     private readonly Action _adicionarPasta;
+    private readonly Action _pastasMudaram;
     private readonly Action<Pro.Recurso?> _mostrarPro;
     private readonly StackPanel _corpo = new() { Spacing = 18, Margin = new Thickness(28, 18, 28, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
 
-    public AjustesView(Action reconstruir, Action adicionarPasta, Action<Pro.Recurso?> mostrarPro)
+    public AjustesView(Action reconstruir, Action adicionarPasta, Action pastasMudaram, Action<Pro.Recurso?> mostrarPro)
     {
-        _reconstruir = reconstruir; _adicionarPasta = adicionarPasta; _mostrarPro = mostrarPro;
+        _reconstruir = reconstruir; _adicionarPasta = adicionarPasta; _pastasMudaram = pastasMudaram; _mostrarPro = mostrarPro;
         Content = _corpo;
         Pro.Mudou += () => Avalonia.Threading.Dispatcher.UIThread.Post(Montar);
     }
@@ -49,10 +51,12 @@ public sealed class AjustesView : ScrollViewer
             Linha(S("Salto das setas"), Opcoes([5, 10, 15, 30], Prefs.Atual.Salto, v => Prefs.Atual.Salto = v, v => F("{0} s", v))),
             Linha(S("Velocidade ao segurar o clique"), Opcoes([1.5, 2, 3, 4], Prefs.Atual.VelocidadeSegurar, v => Prefs.Atual.VelocidadeSegurar = v, v => v.ToString("0.#", Textos.Cultura) + "×")),
             Linha(S("Capturas de quadro"), Ui.Linha((Prefs.Atual.PastaCapturas ?? Path.Combine(Caminhos.Imagens, "LibertyX")).Replace(Caminhos.Home, "~"), 13, FontWeight.Normal, "apagado"))));
-        _corpo.Children.Add(Secao(S("Registro de erros"),
-            Ui.Texto(S("Se algo deu errado, abra o registro, clique em Copiar e cole a mensagem na conversa de suporte. Senhas e chaves de acesso não aparecem nele."), 13, FontWeight.Normal, "apagado"),
-            Ui.Botao(S("Ver e copiar o registro"), Icones.Info, "vidro", MostrarRegistro)));
-        _corpo.Children.Add(Sobre());
+        _corpo.Children.Add(Secao("LibertyX", Grupo(
+            LinhaDeMenu(Icones.Gesto, S("Ver o guia dos gestos e ferramentas"), null, null, false, MostrarGuia),
+            LinhaDeMenu(Icones.Documento, S("Licenças de código aberto"), null, null, false, MostrarLicencas),
+            LinhaDeMenu(Icones.Inseto, S("Registro de erros"), S("Para copiar e mandar ao suporte"), null, false, MostrarRegistro))));
+        _corpo.Children.Add(Secao(S("Fale com a gente"), FaleConosco()));
+        _corpo.Children.Add(Rodape());
     }
 
     // ───────── barra de abas ─────────
@@ -183,33 +187,137 @@ public sealed class AjustesView : ScrollViewer
 
     // ───────── biblioteca ─────────
 
+    /// <summary>
+    /// Onde a biblioteca procura, tudo editável: os lugares automáticos ligam e desligam, as pastas
+    /// acrescentadas trocam de lugar ou saem, e as que ficaram fora da busca (ou ocultas) voltam.
+    /// Nada disso mexe nos arquivos do disco.
+    /// </summary>
     private Control Pastas()
     {
-        var p = Ui.Pilha(6, Orientation.Vertical,
-            Ui.Texto(S("O LibertyX procura vídeos em Vídeos, Downloads, pendrives e HDs conectados, e nas pastas abaixo."), 13, FontWeight.Normal, "apagado"));
-        foreach (var raiz in Biblioteca.Raizes())
+        var p = Ui.Pilha(8, Orientation.Vertical,
+            Ui.Texto(S("Escolha onde o LibertyX procura vídeos. Desligar um lugar ou tirar uma pasta não apaga nada do disco."), 13, FontWeight.Normal, "apagado"));
+        var pref = Prefs.Atual;
+
+        p.Children.Add(Subtitulo(S("Procura automática")));
+        var videos = Biblioteca.Normalizar(Caminhos.Videos);
+        foreach (var raiz in Biblioteca.Automaticas())
         {
-            bool minha = Prefs.Atual.Pastas.Contains(raiz);
-            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-            g.Children.Add(Ui.Icone(Icones.Pasta, 18, Ui.Pincel("Ouro")));
-            var t = Ui.Linha(raiz.Replace(Caminhos.Home, "~"), 14, FontWeight.Medium);
-            t.Margin = new Thickness(10, 0); t.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(t, 1); g.Children.Add(t);
-            if (minha)
+            string tipo = Biblioteca.Igual(raiz, videos) ? S("Pasta Vídeos")
+                : Biblioteca.Removiveis().Any(r => Biblioteca.Igual(r, raiz)) ? S("Disco ou pendrive") : S("Pasta Downloads");
+            var ts = new ToggleSwitch { IsChecked = !Biblioteca.Desligada(raiz), OnContent = "", OffContent = "", VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(ts, S("Procurar vídeos aqui"));
+            ts.IsCheckedChanged += (_, _) =>
             {
-                var r = Ui.BotaoIcone(Icones.Apagar, S("Tirar da biblioteca"), () => { Prefs.Atual.Pastas.Remove(raiz); Prefs.Atual.Salvar(); Montar(); }, "plano", 16);
-                Grid.SetColumn(r, 2); g.Children.Add(r);
-            }
-            p.Children.Add(g);
+                pref.RaizesDesligadas.RemoveAll(d => Biblioteca.Igual(d, raiz));
+                if (ts.IsChecked != true) pref.RaizesDesligadas.Add(raiz);
+                pref.Salvar(); _pastasMudaram();
+            };
+            p.Children.Add(LinhaDePasta(Icones.Pasta, raiz, tipo, ts));
         }
-        if (Prefs.Atual.PastasOcultas.Count > 0)
+
+        if (pref.Pastas.Count > 0)
         {
-            var mostrar = Ui.Botao(P(Prefs.Atual.PastasOcultas.Count, "Mostrar de novo {0} pasta oculta", "Mostrar de novo {0} pastas ocultas"), Icones.Ocultar, "plano",
-                () => { Prefs.Atual.PastasOcultas.Clear(); Prefs.Atual.Salvar(); Montar(); }, 16);
-            p.Children.Add(mostrar);
+            p.Children.Add(Subtitulo(S("Pastas acrescentadas")));
+            foreach (var pasta in pref.Pastas.ToList())
+            {
+                var trocar = Ui.BotaoIcone(Icones.Editar, S("Trocar por outra pasta"), () => TrocarPasta(pasta), "plano", 16);
+                var tirar = Ui.BotaoIcone(Icones.Apagar, S("Tirar da biblioteca"), () =>
+                {
+                    pref.Pastas.Remove(pasta); pref.Salvar(); Montar(); _pastasMudaram();
+                }, "plano", 16);
+                p.Children.Add(LinhaDePasta(Icones.Pasta, pasta, Directory.Exists(pasta) ? null : S("Não encontrada"),
+                    Ui.Pilha(2, Orientation.Horizontal, trocar, tirar)));
+            }
         }
-        p.Children.Add(Ui.Botao(S("Acrescentar pasta"), Icones.Adicionar, "vidro", _adicionarPasta));
+
+        if (pref.PastasExcluidas.Count > 0)
+        {
+            p.Children.Add(Subtitulo(S("Fora da busca (com as subpastas)")));
+            foreach (var pasta in pref.PastasExcluidas.ToList())
+            {
+                var voltar = Ui.Botao(S("Procurar de novo"), null, "plano", () =>
+                {
+                    pref.PastasExcluidas.Remove(pasta); pref.Salvar(); Montar(); _pastasMudaram();
+                });
+                p.Children.Add(LinhaDePasta(Icones.Fechar, pasta, null, voltar));
+            }
+        }
+
+        if (pref.PastasOcultas.Count > 0)
+        {
+            p.Children.Add(Subtitulo(S("Pastas ocultas")));
+            foreach (var pasta in pref.PastasOcultas.ToList())
+            {
+                var mostrar = Ui.Botao(S("Mostrar"), null, "plano", () =>
+                {
+                    pref.PastasOcultas.Remove(pasta); pref.Salvar(); Montar(); _pastasMudaram();
+                });
+                p.Children.Add(LinhaDePasta(Icones.Ocultar, pasta, null, mostrar));
+            }
+            if (pref.PastasOcultas.Count > 1)
+                p.Children.Add(Ui.Botao(P(pref.PastasOcultas.Count, "Mostrar de novo {0} pasta oculta", "Mostrar de novo {0} pastas ocultas"), Icones.Ocultar, "plano",
+                    () => { pref.PastasOcultas.Clear(); pref.Salvar(); Montar(); _pastasMudaram(); }, 16));
+        }
+
+        var botoes = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var acrescentar = Ui.Botao(S("Acrescentar pasta"), Icones.Adicionar, "vidro", _adicionarPasta);
+        acrescentar.Margin = new Thickness(0, 0, 10, 8);
+        var excluir = Ui.Botao(S("Deixar uma pasta fora da busca"), Icones.Fechar, "vidro", ExcluirPasta);
+        excluir.Margin = new Thickness(0, 0, 10, 8);
+        botoes.Children.Add(acrescentar); botoes.Children.Add(excluir);
+        p.Children.Add(botoes);
         return p;
+    }
+
+    private static Control Subtitulo(string t)
+    {
+        var l = Ui.Linha(t, 13, FontWeight.Bold, "apagado");
+        l.Margin = new Thickness(0, 8, 0, 0);
+        return l;
+    }
+
+    private static Control LinhaDePasta(string icone, string caminho, string? nota, Control direita)
+    {
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), MinHeight = 34 };
+        var i = Ui.Icone(icone, 18, Ui.Pincel("Ouro"));
+        i.VerticalAlignment = VerticalAlignment.Center;
+        g.Children.Add(i);
+        // o nome em destaque e o caminho embaixo: num caminho longo, o fim (o nome) é o que some
+        var nome = Ui.Linha(Path.GetFileName(caminho) is { Length: > 0 } n ? n : caminho, 14, FontWeight.SemiBold);
+        var onde = caminho.Replace(Caminhos.Home, "~");
+        var textos = Ui.Pilha(1, Orientation.Vertical, nome, Ui.Linha(nota == null ? onde : nota + " · " + onde, 12, FontWeight.Normal, "tenue"));
+        ToolTip.SetTip(textos, caminho);
+        textos.Margin = new Thickness(10, 0); textos.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(textos, 1); g.Children.Add(textos);
+        direita.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(direita, 2); g.Children.Add(direita);
+        return g;
+    }
+
+    private async Task<string?> EscolherPasta(string titulo)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } sp) return null;
+        var r = await sp.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = titulo, AllowMultiple = false });
+        return r.Select(x => x.TryGetLocalPath()).OfType<string>().FirstOrDefault() is { } f ? Biblioteca.Normalizar(f) : null;
+    }
+
+    private async void TrocarPasta(string antiga)
+    {
+        if (await EscolherPasta(S("Trocar por outra pasta")) is not { } nova) return;
+        var pref = Prefs.Atual;
+        int i = pref.Pastas.IndexOf(antiga);
+        if (pref.Pastas.Any(p => Biblioteca.Igual(p, nova))) pref.Pastas.Remove(antiga);
+        else if (i >= 0) pref.Pastas[i] = nova; else pref.Pastas.Add(nova);
+        pref.PastasExcluidas.RemoveAll(e => Biblioteca.Igual(e, nova));
+        pref.Salvar(); Montar(); _pastasMudaram();
+    }
+
+    private async void ExcluirPasta()
+    {
+        if (await EscolherPasta(S("Deixar uma pasta fora da busca")) is not { } pasta) return;
+        var pref = Prefs.Atual;
+        if (!pref.PastasExcluidas.Any(e => Biblioteca.Igual(e, pasta))) pref.PastasExcluidas.Add(pasta);
+        pref.Salvar(); Montar(); _pastasMudaram();
     }
 
     // ───────── sobre ─────────
@@ -221,18 +329,152 @@ public sealed class AjustesView : ScrollViewer
         return info.Replace("+", " · ");
     }
 
-    private Control Sobre()
+    // ───────── LibertyX e fale com a gente (como no celular) ─────────
+
+    private const string Site = "https://fxmx182.github.io/#/player";
+    private const string EmailDoSuporte = "libertyx.suporte@gmail.com";
+
+    /// <summary>Linhas de menu, uma embaixo da outra, com um fio entre elas.</summary>
+    private static Control Grupo(params Control[] linhas)
+    {
+        var p = new StackPanel { Margin = new Thickness(-12, -4, -12, -6) };
+        for (int i = 0; i < linhas.Length; i++)
+        {
+            if (i > 0) p.Children.Add(new Border { Height = 1, Background = Ui.Pincel("VidroBorda"), Margin = new Thickness(48, 0, 12, 0) });
+            p.Children.Add(linhas[i]);
+        }
+        return p;
+    }
+
+    private static Button LinhaDeMenu(string icone, string titulo, string? sub, string? valor, bool externo, Action clique)
+    {
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
+        var i = Ui.Icone(icone, 22, Ui.Pincel("Ouro"));
+        i.VerticalAlignment = VerticalAlignment.Center;
+        g.Children.Add(i);
+        var tit = Ui.Linha(titulo, 15, FontWeight.SemiBold);
+        var textos = sub == null ? (Control)tit : Ui.Pilha(2, Orientation.Vertical, tit, Ui.Linha(sub, 12.5, FontWeight.Normal, "tenue"));
+        textos.Margin = new Thickness(14, 0); textos.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(textos, 1); g.Children.Add(textos);
+        if (valor != null)
+        {
+            var v = Ui.Linha(valor, 13, FontWeight.Medium, "tenue");
+            v.VerticalAlignment = VerticalAlignment.Center; v.Margin = new Thickness(0, 0, 12, 0);
+            Grid.SetColumn(v, 2); g.Children.Add(v);
+        }
+        var seta = Ui.Icone(externo ? Icones.Externo : Icones.Chevron, externo ? 16 : 20, Ui.Pincel("Tenue"));
+        seta.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(seta, 3); g.Children.Add(seta);
+        var b = new Button { Classes = { "linha" }, Content = g };
+        b.Click += (_, _) => clique();
+        return b;
+    }
+
+    /// <summary>"1.0.12 · aea9c33": o commit com 7 letras, como no celular.</summary>
+    private static string VersaoCurta()
+    {
+        var v = Versao();
+        int i = v.IndexOf(" · ", StringComparison.Ordinal);
+        return i >= 0 && v.Length > i + 3 + 7 ? v[..(i + 3 + 7)] : v;
+    }
+
+    private Control FaleConosco()
+    {
+        Button? compartilhar = null;
+        compartilhar = LinhaDeMenu(Icones.Compartilhar, S("Compartilhar o LibertyX"), null, null, true, async () =>
+        {
+            // no computador não há a folha de compartilhar do celular: o convite vai para a área de transferência
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } area) return;
+            await area.SetTextAsync(S("O LibertyX Player toca qualquer vídeo, do computador ou direto do servidor de casa.") + " " + Site);
+            Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+                Ui.Texto(S("Convite copiado"), 20, FontWeight.ExtraBold),
+                Ui.Texto(S("O texto e o link do LibertyX estão na área de transferência. Cole numa conversa, num grupo ou onde quiser."), 14, FontWeight.Normal, "apagado"),
+                Direita(Ui.Botao(S("Abrir o site"), Icones.Link, "plano", () => { Ui.Abrir(Site); Dialogo.Fechar(); }),
+                    Ui.Botao("OK", null, "ouro", Dialogo.Fechar))));
+        });
+        var x = LinhaDeMenu(Icones.LogoX, S("Seguir no X"), null, S("Em breve"), true, () =>
+            Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+                Ui.Texto(S("Seguir no X"), 20, FontWeight.ExtraBold),
+                Ui.Texto(S("Nosso perfil no X chega em breve."), 14, FontWeight.Normal, "apagado"),
+                Direita(Ui.Botao("OK", null, "ouro", Dialogo.Fechar)))));
+        var email = LinhaDeMenu(Icones.Email, S("Enviar um email"), EmailDoSuporte, null, true, () =>
+            Ui.Abrir($"mailto:{EmailDoSuporte}?subject={Uri.EscapeDataString("LibertyX Player " + Versao())}"));
+        return Grupo(compartilhar, x, email);
+    }
+
+    private static Control Direita(params Control[] botoes)
+    {
+        var p = Ui.Pilha(10, Orientation.Horizontal, botoes);
+        p.HorizontalAlignment = HorizontalAlignment.Right;
+        return p;
+    }
+
+    /// <summary>Qual versão está instalada, à mão — e o mpv e o FFmpeg que vieram com ela.</summary>
+    private static Control Rodape()
     {
         string mpv = App.Mpv?.GetString("mpv-version") ?? "mpv";
-        string ffmpeg = App.Mpv?.GetString("ffmpeg-version") is { } f ? "FFmpeg " + f : "";
-        var diario = Ui.Botao(S("Registro de erros"), null, "plano", MostrarRegistro);
-        return Secao(S("Sobre"),
-            Ui.Texto($"LibertyX Player {Versao()}", 14, FontWeight.Bold),
-            Ui.Texto(S("Sua mídia. Sua liberdade."), 13, FontWeight.Normal, "apagado"),
-            Ui.Texto($"{mpv} · {ffmpeg}", 12, FontWeight.Normal, "tenue"),
-            Ui.Texto(S("Feito sobre projetos de código aberto: mpv e FFmpeg (LGPL/GPL, usados como estão instalados no sistema), Avalonia (MIT), SMBLibrary (LGPL), fonte Manrope (OFL)."), 12, FontWeight.Normal, "tenue"),
-            Ui.Pilha(6, Orientation.Horizontal,
-                Ui.Botao("fxmx182.github.io", Icones.Link, "plano", () => Ui.Abrir("https://fxmx182.github.io/#/player")), diario));
+        string ffmpeg = App.Mpv?.GetString("ffmpeg-version") is { } f ? " · FFmpeg " + f : "";
+        var p = Ui.Pilha(3, Orientation.Vertical,
+            Ui.Linha($"LibertyX Player {VersaoCurta()}", 12, FontWeight.SemiBold, "tenue"),
+            Ui.Linha(S("Sua mídia. Sua liberdade.") + $" · {mpv}{ffmpeg}", 11, FontWeight.Normal, "tenue"));
+        p.HorizontalAlignment = HorizontalAlignment.Center;
+        foreach (var c in p.Children) c.HorizontalAlignment = HorizontalAlignment.Center;
+        p.Margin = new Thickness(0, 0, 0, 10);
+        return p;
+    }
+
+    /// <summary>O guia: os gestos do mouse, o teclado e as ferramentas do menu do player.</summary>
+    private void MostrarGuia()
+    {
+        var lista = new StackPanel { Spacing = 2 };
+        void Titulo(string t) { var l = Ui.Linha(t, 13, FontWeight.Bold, "apagado"); l.Margin = new Thickness(0, 10, 0, 4); lista.Children.Add(l); }
+        void Item(string k, string d)
+        {
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("220,*"), Margin = new Thickness(0, 3) };
+            var a = Ui.Texto(k, 13, FontWeight.Bold); a.Foreground = Ui.Pincel("Ouro");
+            var b = Ui.Texto(d, 13); Grid.SetColumn(b, 1);
+            g.Children.Add(a); g.Children.Add(b);
+            lista.Children.Add(g);
+        }
+        Titulo(S("Teclado e mouse"));
+        foreach (var (k, d) in PlayerView.ListaDeAtalhos()) Item(k, d);
+        Titulo(S("Ferramentas do menu ⋯ do player"));
+        Item(S("Velocidade"), S("De 0,25× a 4×, sem mudar o tom da voz"));
+        Item(S("Faixa de áudio") + " · " + S("Legendas"), S("Troca o idioma, abre uma legenda de arquivo, acerta o atraso e o tamanho"));
+        Item(S("Proporção e zoom"), S("Preenche a tela, corta as tarjas ou volta ao original"));
+        Item(S("Modo noturno"), S("Escurece a imagem em passos, para ver no escuro"));
+        Item(S("Tempo para dormir"), S("Pausa sozinho depois de um tempo"));
+        Item(S("Captura de quadro"), S("Salva a imagem na pasta de capturas"));
+        Item(S("Mini janela"), S("O vídeo continua num canto, por cima das outras janelas"));
+        Item(S("Informações do vídeo"), S("Formato, resolução, faixas e taxa de dados"));
+        var rolagem = new ScrollViewer { Content = lista, MaxHeight = 460 };
+        Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+            Ui.Texto(S("Guia dos gestos e ferramentas"), 20, FontWeight.ExtraBold),
+            rolagem, Direita(Ui.Botao("OK", null, "ouro", Dialogo.Fechar))), 620);
+    }
+
+    private static readonly (string nome, string autor, string licenca, string fonte)[] Componentes =
+    [
+        ("mpv / libmpv", "mpv contributors", "LGPL 2.1+", "https://github.com/mpv-player/mpv"),
+        ("FFmpeg", "FFmpeg", "LGPL 2.1+", "https://ffmpeg.org"),
+        ("libass, FreeType, HarfBuzz, FriBidi", "libass, FreeType, HarfBuzz, FriBidi", "ISC · FTL · MIT · LGPL 2.1+", "https://github.com/libass/libass"),
+        ("Avalonia", "AvaloniaUI", "MIT", "https://github.com/AvaloniaUI/Avalonia"),
+        ("SkiaSharp", "Microsoft / Google", "MIT · BSD 3", "https://github.com/mono/SkiaSharp"),
+        ("SMBLibrary", "Tal Aloni", "LGPL 3+", "https://github.com/TalAloni/SMBLibrary"),
+        (".NET", ".NET Foundation", "MIT", "https://github.com/dotnet/runtime"),
+        ("Manrope", "The Manrope Project Authors", "SIL OFL 1.1", "https://github.com/googlefonts/manrope"),
+    ];
+
+    private void MostrarLicencas()
+    {
+        var lista = new StackPanel();
+        foreach (var c in Componentes)
+            lista.Children.Add(LinhaDeMenu(Icones.Documento, c.nome, $"{c.autor} · {c.licenca}", null, true, () => Ui.Abrir(c.fonte)));
+        var rolagem = new ScrollViewer { Content = lista, MaxHeight = 440 };
+        Dialogo.Mostrar(Ui.Pilha(12, Orientation.Vertical,
+            Ui.Texto(S("Licenças de código aberto"), 20, FontWeight.ExtraBold),
+            Ui.Texto(S("O LibertyX é feito sobre estes projetos de código aberto. Clique num deles para ver o código e a licença. O libmpv que vem com o app é compilado pelos scripts públicos do repositório."), 13, FontWeight.Normal, "apagado"),
+            rolagem, Direita(Ui.Botao(S("Fechar"), null, "ouro", Dialogo.Fechar))), 600);
     }
 
     // ───────── peças ─────────

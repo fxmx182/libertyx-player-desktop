@@ -1317,9 +1317,8 @@ public sealed class PlayerView : Grid
         }).ToArray());
     }
 
-    public void MostrarAtalhos()
-    {
-        (string, string)[] a =
+    /// <summary>Teclado e mouse: o painel do player e o guia dos Ajustes mostram a mesma lista.</summary>
+    public static (string tecla, string faz)[] ListaDeAtalhos() =>
         [
             (S("Espaço / clique"), S("Tocar / pausar")),
             ("← →", F("Voltar / avançar {0} s", Prefs.Atual.Salto)),
@@ -1340,7 +1339,10 @@ public sealed class PlayerView : Grid
             ("0 – 9", S("Ir para 0% … 90%")),
             ("Esc", S("Sair da tela cheia / voltar")),
         ];
-        AbrirPainel(S("Atalhos do teclado"), a.Select(x =>
+
+    public void MostrarAtalhos()
+    {
+        AbrirPainel(S("Atalhos do teclado"), ListaDeAtalhos().Select(x =>
         {
             var g = new Grid { ColumnDefinitions = new ColumnDefinitions("140,*"), Margin = new Thickness(14, 5) };
             var k = Ui.Texto(x.Item1, 13, FontWeight.Bold); k.Foreground = Ui.Pincel("Ouro");

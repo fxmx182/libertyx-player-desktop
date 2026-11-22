@@ -59,6 +59,8 @@ public sealed class Prefs
     public double? Escala { get; set; }                 // null = automática
     public List<string> Pastas { get; set; } = [];      // além de Vídeos e Downloads
     public List<string> PastasOcultas { get; set; } = [];
+    public List<string> RaizesDesligadas { get; set; } = [];   // Vídeos, Downloads ou um disco que não é para procurar
+    public List<string> PastasExcluidas { get; set; } = [];    // fora da busca, com as subpastas
     public bool Decodificacao { get; set; } = true;     // hwdec
     public bool RolagemExata { get; set; } = true;      // quadro exato debaixo do mouse ao arrastar
     public int Salto { get; set; } = 10;                // segundos das setas e do clique duplo nas laterais

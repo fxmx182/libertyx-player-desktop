@@ -78,7 +78,7 @@ public sealed class MainWindow : Window
         _arquivos.Abriu += aba => { if (Abas.Escolhidas().Contains(aba)) Ir(aba); else Ir("arquivos", raiz: false); };
         _procurar = new ProcurarView(Tocar, () => _biblioteca.Pastas, (c, i) => { Ir("arquivos"); _arquivos.AbrirItem(c, i); });
         _biblioteca.Varreu += () => { if (_aba == "arquivos") _arquivos.PastasMudaram(); };
-        _ajustes = new AjustesView(Construir, AdicionarPasta, r => ProDialogo.Mostrar(r));
+        _ajustes = new AjustesView(Construir, AdicionarPasta, () => _biblioteca.Varrer(recomecar: true), r => ProDialogo.Mostrar(r));
         Abas.Mudou -= MontarAbas; Abas.Mudou += MontarAbas;
         Rede.Contas.Mudou -= ServidoresMudaram; Rede.Contas.Mudou += ServidoresMudaram;
         Rede.Servidores.Mudou -= ServidoresMudaram; Rede.Servidores.Mudou += ServidoresMudaram;
@@ -307,12 +307,14 @@ public sealed class MainWindow : Window
         var r = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = S("Acrescentar pasta à biblioteca"), AllowMultiple = true });
         foreach (var f in r.Select(x => x.TryGetLocalPath()).OfType<string>())
         {
-            if (!Prefs.Atual.Pastas.Contains(f)) Prefs.Atual.Pastas.Add(f);
-            Prefs.Atual.PastasOcultas.RemoveAll(o => o.StartsWith(f));
+            if (!Prefs.Atual.Pastas.Any(p => Biblioteca.Igual(p, f))) Prefs.Atual.Pastas.Add(Biblioteca.Normalizar(f));
+            Prefs.Atual.PastasOcultas.RemoveAll(o => Biblioteca.Dentro(o, f));
+            Prefs.Atual.PastasExcluidas.RemoveAll(e => Biblioteca.Igual(e, f));
+            Prefs.Atual.RaizesDesligadas.RemoveAll(d => Biblioteca.Igual(d, f));
         }
         Prefs.Atual.Salvar();
         if (_aba == "ajustes") _ajustes.Montar();
-        _biblioteca.Varrer();
+        _biblioteca.Varrer(recomecar: true);
     }
 
     // ───────── teclado ─────────

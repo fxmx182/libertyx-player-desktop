@@ -73,25 +73,54 @@ public static class Biblioteca
 
     public static bool EhVideo(string caminho) => Extensoes.Contains(Path.GetExtension(caminho));
 
-    /// <summary>As raízes da varredura, sem repetição (uma dentro da outra conta uma vez).</summary>
-    public static List<string> Raizes()
+    private static StringComparison Cmp => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    private static StringComparer ComparaCaminho => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>O caminho completo, sem a barra do fim ("E:\" e "/" continuam com a sua).</summary>
+    public static string Normalizar(string p)
+    {
+        try
+        {
+            var f = Path.GetFullPath(p);
+            return f.Length > (Path.GetPathRoot(f)?.Length ?? 0) ? f.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) : f;
+        }
+        catch { return p; }
+    }
+
+    public static bool Igual(string a, string b) => string.Equals(Normalizar(a), Normalizar(b), Cmp);
+
+    /// <summary><paramref name="p"/> é <paramref name="pai"/> ou está dentro dela.</summary>
+    public static bool Dentro(string p, string pai)
+    {
+        p = Normalizar(p); pai = Normalizar(pai);
+        if (string.Equals(p, pai, Cmp)) return true;
+        var comBarra = pai.EndsWith(Path.DirectorySeparatorChar) ? pai : pai + Path.DirectorySeparatorChar;
+        return p.StartsWith(comBarra, Cmp);
+    }
+
+    /// <summary>Os lugares que o app procura sozinho: Vídeos, Downloads e os discos e pendrives —
+    /// cada um pode ser desligado nos Ajustes.</summary>
+    public static List<string> Automaticas()
     {
         var l = new List<string> { Caminhos.Videos };
         if (OperatingSystem.IsWindows()) l.Add(Caminhos.DownloadsWindows);
         else if (Caminhos.PastaXdg("XDG_DOWNLOAD_DIR") is { } d) l.Add(d); else l.Add(Path.Combine(Caminhos.Home, "Downloads"));
-        l.AddRange(Prefs.Atual.Pastas);
         l.AddRange(Removiveis());
-        if (OperatingSystem.IsWindows())
-        {
-            // "E:\" fica "E:\" (sem a barra, "E:" seria a pasta atual do drive); maiúscula/minúscula não contam
-            var win = l.Where(Directory.Exists).Select(p => Path.GetFullPath(p))
-                .Select(p => p.Length > (Path.GetPathRoot(p)?.Length ?? 0) ? p.TrimEnd('\\') : p)
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            return win.Where(p => !win.Any(o => !o.Equals(p, StringComparison.OrdinalIgnoreCase)
-                && p.StartsWith(o.EndsWith('\\') ? o : o + "\\", StringComparison.OrdinalIgnoreCase))).ToList();
-        }
-        var unicas = l.Where(Directory.Exists).Select(p => Path.GetFullPath(p).TrimEnd('/')).Distinct().ToList();
-        return unicas.Where(p => !unicas.Any(o => o != p && p.StartsWith(o + "/"))).ToList();
+        return l.Where(Directory.Exists).Select(Normalizar).Distinct(ComparaCaminho).ToList();
+    }
+
+    public static bool Desligada(string p) => Prefs.Atual.RaizesDesligadas.Any(d => Igual(d, p));
+
+    /// <summary>As raízes da varredura, sem repetição (uma dentro da outra conta uma vez, a não ser
+    /// que a de fora pule o caminho até a de dentro).</summary>
+    public static List<string> Raizes()
+    {
+        var fora = Prefs.Atual.PastasExcluidas;
+        var l = Automaticas().Where(p => !Desligada(p) && !fora.Any(e => Dentro(p, e))).ToList();
+        l.AddRange(Prefs.Atual.Pastas.Where(Directory.Exists).Select(Normalizar));
+        var unicas = l.Distinct(ComparaCaminho).ToList();
+        return unicas.Where(p => !unicas.Any(o => !string.Equals(o, p, Cmp) && Dentro(p, o)
+            && !fora.Any(e => Dentro(p, e) && Dentro(e, o)))).ToList();
     }
 
     /// <summary>Pendrives e HDs que o desktop montou para o usuário. No Windows: os outros drives (D:, E:,
@@ -125,7 +154,8 @@ public static class Biblioteca
     {
         var porPasta = new Dictionary<string, List<Midia>>();
         var ocultas = Prefs.Atual.PastasOcultas.ToHashSet();
-        foreach (var raiz in Raizes()) Andar(raiz, 0, porPasta, ct);
+        var fora = Prefs.Atual.PastasExcluidas.Select(Normalizar).ToHashSet(ComparaCaminho);
+        foreach (var raiz in Raizes()) Andar(raiz, 0, porPasta, fora, ct);
         return porPasta
             .Where(kv => !ocultas.Contains(kv.Key))
             .Select(kv => new PastaDeVideos { Caminho = kv.Key, Nome = Path.GetFileName(kv.Key) is { Length: > 0 } n ? n : kv.Key, Videos = kv.Value })
@@ -133,9 +163,10 @@ public static class Biblioteca
             .ToList();
     }
 
-    private static void Andar(string dir, int nivel, Dictionary<string, List<Midia>> saida, CancellationToken ct)
+    private static void Andar(string dir, int nivel, Dictionary<string, List<Midia>> saida, HashSet<string> fora, CancellationToken ct)
     {
         if (nivel > 8 || ct.IsCancellationRequested) return;
+        if (nivel > 0 && fora.Contains(dir)) return;   // "não procurar aqui": nem ela, nem as de dentro
         try
         {
             if (File.Exists(Path.Combine(dir, ".nomedia"))) return;
@@ -154,7 +185,7 @@ public static class Biblioteca
                 if (OperatingSystem.IsWindows() && (nome is "Windows" or "Program Files" or "Program Files (x86)" or "ProgramData" or "$WinREAgent"
                     || (File.GetAttributes(d) & (FileAttributes.Hidden | FileAttributes.System)) != 0)) continue;
                 if (new DirectoryInfo(d).LinkTarget != null) continue;   // links não: evitam laço e repetição
-                Andar(d, nivel + 1, saida, ct);
+                Andar(d, nivel + 1, saida, fora, ct);
             }
         }
         catch (UnauthorizedAccessException) { }
