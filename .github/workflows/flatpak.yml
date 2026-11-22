@@ -116,6 +116,7 @@ jobs:
           export GNUPGHOME=$(mktemp -d)
           echo "$FLATPAK_GPG_KEY" | gpg --batch --import
           chave=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          mkdir -p site
           ostree --repo=site/repo init --mode=archive-z2
           for arch in x86_64 aarch64; do
             mkdir -p "a-$arch" && tar -xf "repo-$arch.tar" -C "a-$arch"
