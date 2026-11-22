@@ -380,6 +380,17 @@ public static partial class Textos
         ["Formato, resolução, faixas e taxa de dados"] = "Format, resolution, tracks and bitrate",
         ["Guia dos gestos e ferramentas"] = "Gestures and tools guide",
         ["O LibertyX é feito sobre estes projetos de código aberto. Clique num deles para ver o código e a licença. O libmpv que vem com o app é compilado pelos scripts públicos do repositório."] = "LibertyX is built on these open source projects. Click one to see its code and license. The libmpv bundled with the app is built by the public scripts in the repository.",
+        ["É o padrão"] = "It's the default",
+        ["Como escolher"] = "How to choose",
+        ["Usar como padrão"] = "Make default",
+        ["Player padrão de vídeos"] = "Default video player",
+        ["Usar o LibertyX como player padrão?"] = "Use LibertyX as the default player?",
+        ["Para os vídeos abrirem no LibertyX com dois cliques, escolha-o uma vez no sistema:"] = "To open videos in LibertyX with a double-click, choose it once in the system:",
+        ["Configurações › Aplicativos padrão › Vídeo › LibertyX Player"] = "Settings › Default Applications › Video › LibertyX Player",
+        ["ou clique com o botão direito num vídeo › Abrir com › LibertyX Player › Sempre usar"] = "or right-click a video › Open With › LibertyX Player › Always use",
+        ["Entendi"] = "Got it",
+        ["Os vídeos do computador (mp4, mkv, webm, avi e outros) passam a abrir no LibertyX com dois cliques. Dá para mudar depois nos Ajustes do sistema."] = "Videos on this computer (mp4, mkv, webm, avi and more) will open in LibertyX with a double-click. You can change this later in the system settings.",
+        ["Não deu certo — veja o registro de erros"] = "It didn't work — see the error log",
     };
 
     private static readonly Dictionary<string, string> Es = new()
@@ -771,5 +782,16 @@ public static partial class Textos
         ["Formato, resolução, faixas e taxa de dados"] = "Formato, resolución, pistas y tasa de datos",
         ["Guia dos gestos e ferramentas"] = "Guía de gestos y herramientas",
         ["O LibertyX é feito sobre estes projetos de código aberto. Clique num deles para ver o código e a licença. O libmpv que vem com o app é compilado pelos scripts públicos do repositório."] = "LibertyX está hecho sobre estos proyectos de código abierto. Haz clic en uno para ver el código y la licencia. El libmpv que viene con la app se compila con los scripts públicos del repositorio.",
+        ["É o padrão"] = "Es el predeterminado",
+        ["Como escolher"] = "Cómo elegir",
+        ["Usar como padrão"] = "Usar como predeterminado",
+        ["Player padrão de vídeos"] = "Reproductor de video predeterminado",
+        ["Usar o LibertyX como player padrão?"] = "¿Usar LibertyX como reproductor predeterminado?",
+        ["Para os vídeos abrirem no LibertyX com dois cliques, escolha-o uma vez no sistema:"] = "Para que los videos se abran en LibertyX con doble clic, elígelo una vez en el sistema:",
+        ["Configurações › Aplicativos padrão › Vídeo › LibertyX Player"] = "Configuración › Aplicaciones predeterminadas › Video › LibertyX Player",
+        ["ou clique com o botão direito num vídeo › Abrir com › LibertyX Player › Sempre usar"] = "o haz clic derecho en un video › Abrir con › LibertyX Player › Usar siempre",
+        ["Entendi"] = "Entendido",
+        ["Os vídeos do computador (mp4, mkv, webm, avi e outros) passam a abrir no LibertyX com dois cliques. Dá para mudar depois nos Ajustes do sistema."] = "Los videos del ordenador (mp4, mkv, webm, avi y otros) se abrirán en LibertyX con doble clic. Puedes cambiarlo después en la configuración del sistema.",
+        ["Não deu certo — veja o registro de erros"] = "No funcionó — mira el registro de errores",
     };
 }

@@ -166,7 +166,8 @@ jobs:
           sha=$(echo "${{ github.sha }}" | cut -c1-7)
           tag="v${ver}-$(date -u +%Y%m%d)-${sha}"
           msg=$( (printf '%s\n' "$subjects" | grep -E '^\s*(Linux|Windows e Linux)\b' || git log -1 --pretty=%s) | sed -E 's/^\s*(Windows e )?Linux\s*:\s*//' | paste -sd'·' | sed 's/·/ · /g' | cut -c1-300)
-          printf 'sistema=linux\nversao=%s\ncommit=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$msg" > up/versao.txt
+          # a data vai para a ficha do Flathub (o <release> do metainfo, montado na compilação do Flatpak)
+          printf 'sistema=linux\nversao=%s\ncommit=%s\ndata=%s\nnovidades=%s\n' "$ver" "${{ github.sha }}" "$(date -u +%Y-%m-%d)" "$msg" > up/versao.txt
           # o AppImage se atualiza sozinho (troca o arquivo); os pacotes abrem a página
           printf 'appimage=%s\ntamanho_appimage=%s\nappimage_arm64=%s\ntamanho_appimage_arm64=%s\n' \
             LibertyXPlayer-x86_64.AppImage "$(tam LibertyXPlayer-x86_64.AppImage)" \

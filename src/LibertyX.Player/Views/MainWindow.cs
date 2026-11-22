@@ -50,6 +50,7 @@ public sealed class MainWindow : Window
         AddHandler(KeyDownEvent, Tecla, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Construir();
         Opened += (_, _) => _ = ProcurarAtualizacao();
+        if (OperatingSystem.IsLinux()) Opened += (_, _) => _ = PerguntarPadrao();
         PropertyChanged += (_, e) => { if (e.Property == ClientSizeProperty) AjustarBarra(); };
         Closing += (_, e) =>
         {
@@ -403,12 +404,60 @@ public sealed class MainWindow : Window
         _player.AjustarModo();
     }
 
+    // ───────── player padrão (Linux) ─────────
+
+    /// <summary>Na primeira vez: "usar o LibertyX como player padrão?". O instalador do Linux não
+    /// pergunta nada, então quem pergunta é o app — depois de abrir, sem cortar um vídeo nem outro diálogo.</summary>
+    private async Task PerguntarPadrao()
+    {
+        if (Prefs.Atual.PerguntouPadrao || PlayerPadrao.Atalho == null) return;
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        for (int k = 0; k < 120 && (_player.Tocando || Dialogo.Aberto); k++) await Task.Delay(TimeSpan.FromSeconds(5));
+        if (_player.Tocando || Dialogo.Aberto || Prefs.Atual.PerguntouPadrao) return;
+        Prefs.Atual.PerguntouPadrao = true; Prefs.Atual.Salvar();
+        if (PlayerPadrao.EhPadrao()) return;
+        MostrarPlayerPadrao();
+    }
+
+    /// <summary>O diálogo do player padrão — também aberto pelos Ajustes.</summary>
+    public static void MostrarPlayerPadrao(Action? depois = null)
+    {
+        var p = Ui.Pilha(12, Orientation.Vertical,
+            Ui.Pilha(12, Orientation.Horizontal, Ui.Marca(40), Ui.Texto(S("Usar o LibertyX como player padrão?"), 20, FontWeight.ExtraBold)));
+        if (PlayerPadrao.DeLoja)
+        {
+            // Flatpak e Snap não deixam o app mexer nisso: o caminho fica explicado
+            p.Children.Add(Ui.Texto(S("Para os vídeos abrirem no LibertyX com dois cliques, escolha-o uma vez no sistema:"), 14, FontWeight.Normal, "apagado"));
+            p.Children.Add(Ui.Texto("• " + S("Configurações › Aplicativos padrão › Vídeo › LibertyX Player"), 14, FontWeight.SemiBold));
+            p.Children.Add(Ui.Texto("• " + S("ou clique com o botão direito num vídeo › Abrir com › LibertyX Player › Sempre usar"), 14, FontWeight.SemiBold));
+            var ok = Ui.Botao(S("Entendi"), null, "ouro", () => { Dialogo.Fechar(); depois?.Invoke(); });
+            ok.HorizontalAlignment = HorizontalAlignment.Right;
+            p.Children.Add(ok);
+        }
+        else
+        {
+            p.Children.Add(Ui.Texto(S("Os vídeos do computador (mp4, mkv, webm, avi e outros) passam a abrir no LibertyX com dois cliques. Dá para mudar depois nos Ajustes do sistema."), 14, FontWeight.Normal, "apagado"));
+            var nao = Ui.Botao(S("Agora não"), null, "plano", () => { Dialogo.Fechar(); depois?.Invoke(); });
+            var sim = Ui.Botao(S("Usar como padrão"), Icones.Ok, "ouro", null);
+            sim.Click += (_, _) =>
+            {
+                if (PlayerPadrao.Tornar()) { Dialogo.Fechar(); depois?.Invoke(); }
+                else sim.Content = S("Não deu certo — veja o registro de erros");
+            };
+            var botoes = Ui.Pilha(10, Orientation.Horizontal, nao, sim);
+            botoes.HorizontalAlignment = HorizontalAlignment.Right;
+            p.Children.Add(botoes);
+        }
+        Dialogo.Mostrar(p, 520);
+    }
+
     // ───────── atualização ─────────
 
     /// <summary>Ao abrir: confere a versão publicada e, havendo nova, pergunta — sem interromper um vídeo nem outro diálogo.</summary>
     private async Task ProcurarAtualizacao()
     {
         if (Environment.GetEnvironmentVariable("LIBERTYX_SEM_ATUALIZACAO") == "1") return;
+        if (PlayerPadrao.DeLoja) return;   // no Flatpak e no Snap quem atualiza é a loja
         await Task.Delay(TimeSpan.FromSeconds(4));
         var i = await Task.Run(() => Atualizacao.Conferir());
         if (i == null || !Atualizacao.Nova(i)) return;

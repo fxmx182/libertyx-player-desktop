@@ -27,6 +27,9 @@ public static class Caminhos
         try
         {
             var f = Path.Combine(Xdg("XDG_CONFIG_HOME", ".config"), "user-dirs.dirs");
+            // no Flatpak o XDG_CONFIG_HOME é o da caixinha; o do sistema (com "Vídeos", "Downloads"
+            // no idioma da pessoa) continua no ~/.config
+            if (!File.Exists(f)) f = Path.Combine(Home, ".config", "user-dirs.dirs");
             if (!File.Exists(f)) return null;
             foreach (var l in File.ReadAllLines(f))
                 if (l.StartsWith(chave + "="))
@@ -74,6 +77,7 @@ public sealed class Prefs
     public string? IdiomaAudio { get; set; }            // "por" "eng"… (alang do mpv)
     public string? IdiomaLegenda { get; set; }
     public bool GuiaVisto { get; set; }
+    public bool PerguntouPadrao { get; set; }           // "usar como player padrão?" (Linux, só uma vez)
     public double MiniLargura { get; set; } = 480;      // a mini janela abre do tamanho que ficou
     public double MiniAltura { get; set; } = 270;
     public string? IdDoAparelho { get; set; }           // como o Jellyfin/Emby lista este computador

@@ -41,7 +41,7 @@ public sealed class AjustesView : ScrollViewer
             : Secao(S("Aparência"), Linha(S("Idioma"), Idioma()), Linha(S("Tamanho da interface"), Escala())));
         _corpo.Children.Add(Secao(S("Biblioteca"), Pastas()));
         _corpo.Children.Add(BarraDeAbas());
-        _corpo.Children.Add(Secao(S("Reprodução"),
+        _corpo.Children.Add(Secao(S("Reprodução"), [.. PlayerPadraoLinha(),
             Chave(S("Decodificação por hardware"), OperatingSystem.IsWindows()
                     ? S("Usa a placa de vídeo (D3D11, DXVA2) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo.")
                     : S("Usa a placa de vídeo (VA-API, NVDEC) quando dá: menos processador e menos calor. Vale ao abrir o próximo vídeo."),
@@ -50,13 +50,25 @@ public sealed class AjustesView : ScrollViewer
                 Prefs.Atual.RolagemExata, v => Prefs.Atual.RolagemExata = v),
             Linha(S("Salto das setas"), Opcoes([5, 10, 15, 30], Prefs.Atual.Salto, v => Prefs.Atual.Salto = v, v => F("{0} s", v))),
             Linha(S("Velocidade ao segurar o clique"), Opcoes([1.5, 2, 3, 4], Prefs.Atual.VelocidadeSegurar, v => Prefs.Atual.VelocidadeSegurar = v, v => v.ToString("0.#", Textos.Cultura) + "×")),
-            Linha(S("Capturas de quadro"), Ui.Linha((Prefs.Atual.PastaCapturas ?? Path.Combine(Caminhos.Imagens, "LibertyX")).Replace(Caminhos.Home, "~"), 13, FontWeight.Normal, "apagado"))));
+            Linha(S("Capturas de quadro"), Ui.Linha((Prefs.Atual.PastaCapturas ?? Path.Combine(Caminhos.Imagens, "LibertyX")).Replace(Caminhos.Home, "~"), 13, FontWeight.Normal, "apagado"))]));
         _corpo.Children.Add(Secao("LibertyX", Grupo(
             LinhaDeMenu(Icones.Gesto, S("Ver o guia dos gestos e ferramentas"), null, null, false, MostrarGuia),
             LinhaDeMenu(Icones.Documento, S("Licenças de código aberto"), null, null, false, MostrarLicencas),
             LinhaDeMenu(Icones.Inseto, S("Registro de erros"), S("Para copiar e mandar ao suporte"), null, false, MostrarRegistro))));
         _corpo.Children.Add(Secao(S("Fale com a gente"), FaleConosco()));
         _corpo.Children.Add(Rodape());
+    }
+
+    /// <summary>Linux instalado (.deb, .rpm, AppImage, Flatpak, Snap): é ou não o player padrão. No
+    /// Windows e no .tar.gz solto a linha não aparece.</summary>
+    private Control[] PlayerPadraoLinha()
+    {
+        if (PlayerPadrao.Atalho == null) return [];
+        Control direita = PlayerPadrao.EhPadrao()
+            ? Ui.Pilha(6, Orientation.Horizontal, Ui.Icone(Icones.Ok, 16, Ui.Pincel("Ouro")), Ui.Linha(S("É o padrão"), 13, FontWeight.SemiBold, "apagado"))
+            : Ui.Botao(PlayerPadrao.DeLoja ? S("Como escolher") : S("Usar como padrão"), null, "vidro", () => MainWindow.MostrarPlayerPadrao(Montar));
+        direita.VerticalAlignment = VerticalAlignment.Center;
+        return [Linha(S("Player padrão de vídeos"), direita)];
     }
 
     // ───────── barra de abas ─────────

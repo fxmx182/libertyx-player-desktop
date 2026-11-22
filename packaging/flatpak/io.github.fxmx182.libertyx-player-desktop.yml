@@ -1,0 +1,151 @@
+# LibertyX Player no Flathub.
+#
+# O app vem do executável já publicado nas releases do Linux (o mesmo do .tar.gz, .NET de arquivo
+# único) e o motor de vídeo é o libmpv compilado aqui do código, sobre o FFmpeg do runtime
+# (com os codecs do org.freedesktop.Platform.codecs-extra). Os arquivos da ficha (.desktop,
+# metainfo, ícones) vêm do próprio repositório, no mesmo commit da release.
+#
+# Atualizar para uma release nova: trocar a tag/commit do git e os url/sha256 dos três arquivos
+# da release (o flatpak-external-data-checker do Flathub faz isso sozinho pelo x-checker-data).
+id: io.github.fxmx182.libertyx-player-desktop
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: libertyx-player
+
+finish-args:
+  - --share=ipc
+  # o Avalonia 11 desenha pelo X11 (no Wayland, pelo XWayland)
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  # decodificação por hardware (VA-API, NVDEC)
+  - --device=dri
+  # a biblioteca procura sozinha em Vídeos, Downloads e nos pendrives e HDs montados (só leitura);
+  # outras pastas entram pela janela de escolher pasta do sistema (o portal de documentos)
+  - --filesystem=xdg-videos:ro
+  - --filesystem=xdg-download:ro
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/mnt:ro
+  # capturas de quadro vão para Imagens/LibertyX
+  - --filesystem=xdg-pictures
+  # o mpv quer o ponto como separador decimal
+  - --env=LC_NUMERIC=C
+  # o tema do cursor do sistema
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  # não deixar a tela apagar durante o vídeo
+  - --talk-name=org.freedesktop.ScreenSaver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz
+        sha256: 2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc
+        x-checker-data:
+          type: anitya
+          project-id: 1560
+          stable-only: true
+          url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+      - -Dalsa=disabled
+    cleanup:
+      - /share
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.42.0.tar.gz
+        sha256: bcfebbfa2b65a6d88dc97ea18117831072373e38b5785a2afb874ed4df5070dd
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          stable-only: true
+          url-template: https://github.com/mpv-player/mpv/archive/v$version.tar.gz
+
+  - name: libertyx-player
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 app/LibertyXPlayer /app/libertyx/LibertyXPlayer
+      - install -Dm755 repo/packaging/flatpak/libertyx-player.sh /app/bin/libertyx-player
+      - install -Dm644 repo/packaging/flatpak/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      # a versão e a data desta release entram na ficha (vêm do versao.txt publicado junto)
+      - |
+        ver=$(sed -n 's/^versao=//p' versao.txt)
+        data=$(sed -n 's/^data=//p' versao.txt)
+        sed "s|<releases>|<releases>\n    <release version=\"${ver}\" date=\"${data}\"/>|" \
+          repo/packaging/flatpak/${FLATPAK_ID}.metainfo.xml > ${FLATPAK_ID}.metainfo.xml
+        install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - |
+        for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 repo/packaging/linux/icons/$s.png /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png
+        done
+    sources:
+      - type: git
+        url: https://github.com/fxmx182/libertyx-player-desktop.git
+        tag: v1.0.15-20261122-0000000
+        commit: '0000000000000000000000000000000000000000'
+        dest: repo
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)-\d+-[0-9a-f]+$
+          is-main-source: true
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/LibertyXPlayer-linux.tar.gz
+        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        dest: app
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/fxmx182/libertyx-player-desktop/releases
+          version-query: '[.[] | select(.tag_name | startswith("v"))][0].tag_name | ltrimstr("v") | split("-")[0]'
+          url-query: '[.[] | select(.tag_name | startswith("v"))][0].assets[] | select(.name == "LibertyXPlayer-linux.tar.gz") | .browser_download_url'
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/LibertyXPlayer-linux-arm64.tar.gz
+        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        dest: app
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/fxmx182/libertyx-player-desktop/releases
+          version-query: '[.[] | select(.tag_name | startswith("v"))][0].tag_name | ltrimstr("v") | split("-")[0]'
+          url-query: '[.[] | select(.tag_name | startswith("v"))][0].assets[] | select(.name == "LibertyXPlayer-linux-arm64.tar.gz") | .browser_download_url'
+      - type: file
+        url: https://github.com/fxmx182/libertyx-player-desktop/releases/download/v1.0.15-20261122-0000000/versao.txt
+        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/fxmx182/libertyx-player-desktop/releases
+          version-query: '[.[] | select(.tag_name | startswith("v"))][0].tag_name | ltrimstr("v") | split("-")[0]'
+          url-query: '[.[] | select(.tag_name | startswith("v"))][0].assets[] | select(.name == "versao.txt") | .browser_download_url'

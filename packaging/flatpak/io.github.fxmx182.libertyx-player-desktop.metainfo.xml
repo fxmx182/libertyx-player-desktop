@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ficha do LibertyX Player no Flathub (COSMIC Store, GNOME Software, Discover). O <releases> é
+     completado na compilação com a versão e a data do versao.txt da release (ver o manifesto). -->
+<component type="desktop-application">
+  <id>io.github.fxmx182.libertyx-player-desktop</id>
+  <name>LibertyX Player</name>
+  <summary>Your videos and your home server</summary>
+  <summary xml:lang="pt-BR">Seus vídeos e o servidor de casa</summary>
+  <summary xml:lang="es">Tus videos y el servidor de casa</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="io.github.fxmx182">
+    <name>LibertyX</name>
+  </developer>
+  <description>
+    <p>LibertyX Player brings the Android and iPhone player to the desktop. It finds the videos on your computer by itself and also plays straight from your home server — Jellyfin, Emby, WebDAV and shared network folders (SMB) — without copying anything.</p>
+    <p xml:lang="pt-BR">O LibertyX Player do Android e do iPhone, no computador. Ele acha sozinho os vídeos do computador e também toca direto do servidor de casa — Jellyfin, Emby, WebDAV e pastas compartilhadas da rede (SMB) — sem copiar nada.</p>
+    <p xml:lang="es">El reproductor LibertyX de Android y iPhone, en el ordenador. Encuentra solo los videos del ordenador y también reproduce directo desde el servidor de casa — Jellyfin, Emby, WebDAV y carpetas compartidas de la red (SMB) — sin copiar nada.</p>
+    <ul>
+      <li>A library of your video folders with covers and "continue watching"</li>
+      <li xml:lang="pt-BR">Biblioteca das pastas de vídeo com capas e "continuar assistindo"</li>
+      <li xml:lang="es">Biblioteca de tus carpetas de video con portadas y "seguir viendo"</li>
+      <li>Frame-accurate seeking: drag the video and see the exact frame</li>
+      <li xml:lang="pt-BR">Rolagem quadro a quadro: arraste o vídeo e veja o quadro exato</li>
+      <li xml:lang="es">Búsqueda fotograma a fotograma: arrastra el video y ve el fotograma exacto</li>
+      <li>A full Jellyfin and Emby client: libraries, series and seasons, cast, favorites, live TV and skip intro</li>
+      <li xml:lang="pt-BR">Cliente completo de Jellyfin e Emby: bibliotecas, séries e temporadas, elenco, favoritos, TV ao vivo e pular abertura</li>
+      <li xml:lang="es">Cliente completo de Jellyfin y Emby: bibliotecas, series y temporadas, reparto, favoritos, TV en vivo y saltar intro</li>
+      <li>Audio tracks, subtitles (also from a file), subtitle delay and size</li>
+      <li xml:lang="pt-BR">Faixas de áudio, legendas (também de arquivo), atraso e tamanho da legenda</li>
+      <li xml:lang="es">Pistas de audio, subtítulos (también de archivo), retraso y tamaño de subtítulos</li>
+      <li>Speed, night mode, sleep timer, frame capture and a mini window</li>
+      <li xml:lang="pt-BR">Velocidade, modo noturno, tempo para dormir, captura de quadro e mini janela</li>
+      <li xml:lang="es">Velocidad, modo nocturno, temporizador, captura de fotograma y mini ventana</li>
+      <li>Hardware decoding (VA-API, NVDEC) powered by mpv</li>
+      <li xml:lang="pt-BR">Decodificação por hardware (VA-API, NVDEC) com o mpv</li>
+      <li xml:lang="es">Decodificación por hardware (VA-API, NVDEC) con mpv</li>
+    </ul>
+    <p>Network folders, Jellyfin and Emby, and some tools are part of LibertyX Pro, with a free trial.</p>
+    <p xml:lang="pt-BR">Pastas da rede, Jellyfin e Emby e algumas ferramentas fazem parte do LibertyX Pro, com teste grátis.</p>
+    <p xml:lang="es">Las carpetas de red, Jellyfin y Emby y algunas herramientas son parte de LibertyX Pro, con prueba gratis.</p>
+  </description>
+  <launchable type="desktop-id">io.github.fxmx182.libertyx-player-desktop.desktop</launchable>
+  <url type="homepage">https://fxmx182.github.io/#/player</url>
+  <url type="bugtracker">https://github.com/fxmx182/libertyx-player-desktop/issues</url>
+  <url type="vcs-browser">https://github.com/fxmx182/libertyx-player-desktop</url>
+  <url type="contact">https://fxmx182.github.io/#/player</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>video</keyword>
+    <keyword>player</keyword>
+    <keyword>jellyfin</keyword>
+    <keyword>emby</keyword>
+    <keyword>smb</keyword>
+    <keyword>subtitles</keyword>
+  </keywords>
+  <provides>
+    <mediatype>video/mp4</mediatype>
+    <mediatype>video/x-matroska</mediatype>
+    <mediatype>video/webm</mediatype>
+  </provides>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Your Jellyfin server, with libraries on top</caption>
+      <image>https://raw.githubusercontent.com/fxmx182/libertyx-player-desktop/main/packaging/flatpak/screenshots/1-jellyfin.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Movie page with cast, tracks and quality</caption>
+      <image>https://raw.githubusercontent.com/fxmx182/libertyx-player-desktop/main/packaging/flatpak/screenshots/2-filme.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Choose where the library looks for videos</caption>
+      <image>https://raw.githubusercontent.com/fxmx182/libertyx-player-desktop/main/packaging/flatpak/screenshots/3-ajustes.png</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#FBC501</color>
+    <color type="primary" scheme_preference="dark">#5C4A00</color>
+  </branding>
+  <content_rating type="oars-1.1">
+    <content_attribute id="money-purchasing">mild</content_attribute>
+  </content_rating>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+  </releases>
+</component>
