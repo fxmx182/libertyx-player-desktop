@@ -75,6 +75,8 @@ modules:
   - name: libmpv
     buildsystem: meson
     config-opts:
+      # LGPL, como no AppImage e no Windows: o app é proprietário e só pode ligar ao libmpv LGPL
+      - -Dgpl=false
       - -Dlibmpv=true
       - -Dcplayer=false
       - -Dbuild-date=false
@@ -82,8 +84,13 @@ modules:
       - -Djavascript=disabled
       - -Dmanpage-build=disabled
       - -Dalsa=disabled
+    # o texto da LGPL fica (share/licenses); o resto do share do mpv não serve ao app
     cleanup:
-      - /share
+      - /share/applications
+      - /share/bash-completion
+      - /share/doc
+      - /share/icons
+      - /share/zsh
     sources:
       - type: archive
         url: https://github.com/mpv-player/mpv/archive/v0.42.0.tar.gz

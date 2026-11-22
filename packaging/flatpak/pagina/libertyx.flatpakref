@@ -1,0 +1,13 @@
+[Flatpak Ref]
+Name=io.github.fxmx182.libertyx-player-desktop
+Branch=stable
+Title=LibertyX Player
+Url=@SITE@/repo/
+SuggestRemoteName=libertyx
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+IsRuntime=false
+Homepage=https://fxmx182.github.io/#/player
+Icon=@SITE@/icone.png
+Comment=Your videos and your home server
+Description=LibertyX Player: your videos and your home server (Jellyfin, Emby, WebDAV, SMB), with frame-accurate seeking.
+GPGKey=@GPGKEY@

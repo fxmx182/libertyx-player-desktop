@@ -1,0 +1,146 @@
+name: LibertyX Player (Flatpak)
+
+# O repositório Flatpak próprio do LibertyX, no GitHub Pages deste repositório:
+#   https://<dono>.github.io/libertyx-player-desktop/        (página com o botão de instalar)
+#   https://<dono>.github.io/libertyx-player-desktop/repo/   (o repositório OSTree)
+# Depois de cada release do Linux, compila o Flatpak de packaging/flatpak para x86_64 e aarch64
+# (cada um no próprio runner), junta os dois num repositório só, assina com a chave do segredo
+# FLATPAK_GPG_KEY e publica. O repositório leva só a versão mais nova: quem já tem o app baixa
+# apenas os arquivos que mudaram (o OSTree guarda por conteúdo).
+# A COSMIC Store (Pop!_OS), o GNOME Software e o Discover instalam pelo .flatpakref e atualizam
+# sozinhos; o runtime (org.freedesktop.Platform) vem do Flathub.
+on:
+  workflow_run:
+    workflows: ["LibertyX Player (Linux)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: flatpak-pages
+  cancel-in-progress: false
+
+env:
+  APP_ID: io.github.fxmx182.libertyx-player-desktop
+  SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+
+jobs:
+  versao:
+    name: Há release nova?
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      novo: ${{ steps.v.outputs.novo }}
+    steps:
+      - id: v
+        run: |
+          tag=$(curl -fsSL "https://github.com/${{ github.repository }}/releases.atom" \
+            | grep -oE 'releases/tag/v[0-9.]+-[0-9]+-[0-9a-f]+' | head -1 | sed 's|releases/tag/||')
+          publicada=$(curl -fsSL "$SITE/tag.txt" 2>/dev/null || true)
+          echo "release mais nova: $tag · publicada no Flatpak: ${publicada:-nenhuma}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -n "$tag" ] && { [ "$tag" != "$publicada" ] || [ "${{ github.event_name }}" = workflow_dispatch ]; }; then
+            echo "novo=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Compilar (${{ matrix.arch }})
+    needs: versao
+    if: needs.versao.outputs.novo == '1'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      # libass, libplacebo e libmpv quase nunca mudam: o cache poupa uns 10 minutos
+      - uses: actions/cache@v4
+        with:
+          path: .flatpak-builder
+          key: flatpak-${{ matrix.arch }}-${{ needs.versao.outputs.tag }}
+          restore-keys: flatpak-${{ matrix.arch }}-
+
+      - name: Manifesto com a release ${{ needs.versao.outputs.tag }}
+        run: python3 Scripts/flathub.py "${{ needs.versao.outputs.tag }}" /tmp/manifesto.yml
+
+      - name: flatpak-builder
+        run: |
+          git config --global --add safe.directory '*'
+          flatpak-builder --disable-rofiles-fuse --force-clean --default-branch=stable \
+            --arch=${{ matrix.arch }} --repo=repo build /tmp/manifesto.yml
+          tar -cf repo-${{ matrix.arch }}.tar repo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo-${{ matrix.arch }}
+          path: repo-${{ matrix.arch }}.tar
+          retention-days: 3
+
+  publicar:
+    name: Assinar e publicar
+    needs: [versao, build]
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: repo-*
+          merge-multiple: true
+
+      - name: Juntar as arquiteturas e assinar
+        env:
+          FLATPAK_GPG_KEY: ${{ secrets.FLATPAK_GPG_KEY }}
+        run: |
+          [ -n "$FLATPAK_GPG_KEY" ] || { echo "::error::falta o segredo FLATPAK_GPG_KEY"; exit 1; }
+          export GNUPGHOME=$(mktemp -d)
+          echo "$FLATPAK_GPG_KEY" | gpg --batch --import
+          chave=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          ostree --repo=site/repo init --mode=archive-z2
+          for arch in x86_64 aarch64; do
+            mkdir -p "a-$arch" && tar -xf "repo-$arch.tar" -C "a-$arch"
+            # só o app (o .Debug fica de fora: ninguém instala e dobraria o tamanho)
+            ostree --repo=site/repo pull-local "a-$arch/repo" "app/$APP_ID/$arch/stable"
+            flatpak build-sign site/repo "$APP_ID" stable --arch="$arch" --gpg-sign="$chave"
+          done
+          flatpak build-update-repo --gpg-sign="$chave" --generate-static-deltas --prune \
+            --title="LibertyX" --default-branch=stable site/repo
+          du -sh site/repo
+
+      - name: Página, .flatpakref e .flatpakrepo
+        run: |
+          chave=$(base64 -w0 packaging/flatpak/libertyx.gpg)
+          for f in libertyx.flatpakref libertyx.flatpakrepo index.html; do
+            sed -e "s|@SITE@|$SITE|g" -e "s|@GPGKEY@|$chave|g" -e "s|@TAG@|${{ needs.versao.outputs.tag }}|g" \
+              "packaging/flatpak/pagina/$f" > "site/$f"
+          done
+          cp packaging/linux/icons/256.png site/icone.png
+          cp packaging/flatpak/libertyx.gpg site/libertyx.gpg
+          echo "${{ needs.versao.outputs.tag }}" > site/tag.txt
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

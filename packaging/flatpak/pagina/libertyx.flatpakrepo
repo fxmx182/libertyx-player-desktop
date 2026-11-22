@@ -1,0 +1,9 @@
+[Flatpak Repo]
+Title=LibertyX
+Url=@SITE@/repo/
+Homepage=https://fxmx182.github.io/#/player
+Comment=LibertyX apps
+Description=The LibertyX Player and other LibertyX apps for Linux.
+Icon=@SITE@/icone.png
+DefaultBranch=stable
+GPGKey=@GPGKEY@

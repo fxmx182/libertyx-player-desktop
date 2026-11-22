@@ -37,6 +37,16 @@ Aceleração: NVDEC (abre o driver da NVIDIA se houver) e VAAPI (libva estático
 Tem LuaJIT, então links de sites de vídeo abrem se o yt-dlp estiver instalado. Ao abrir, cria o
 atalho no menu (`~/.local/share/applications`) e se atualiza sozinho trocando o próprio arquivo.
 
+O **Flatpak** sai de um repositório nosso no GitHub Pages
+(https://fxmx182.github.io/libertyx-player-desktop/): o botão "Instalar" abre a COSMIC Store do
+Pop!_OS, o GNOME Software ou o Discover, que instalam e atualizam sozinhos. Leva o próprio libmpv
+LGPL sobre o FFmpeg do runtime do Flathub, compilado e assinado pelo `flatpak.yml` a cada release do
+Linux. Detalhes em `packaging/flatpak/LEIA-ME.md`.
+
+Na primeira vez que abre, o app pergunta se vira o **player padrão** de vídeos (o instalador do
+Linux não pergunta nada): no .deb, .rpm e AppImage ele mesmo grava a escolha no `mimeapps.list`; no
+Flatpak explica onde escolher.
+
 ## Windows e Linux no mesmo código
 
 Uma base só, como no Partition: tudo que é de um sistema fica atrás de `OperatingSystem.IsWindows()`

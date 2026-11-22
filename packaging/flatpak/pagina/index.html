@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LibertyX Player para Linux</title>
+<meta name="description" content="Instale o LibertyX Player no Linux pelo Flatpak: COSMIC Store, GNOME Software ou Discover, com atualização automática.">
+<link rel="icon" href="icone.png">
+<style>
+  :root {
+    --fundo: #0b0b0c; --cartao: #161618; --borda: #ffffff1c; --texto: #f2f2f5; --apagado: #ebebf599;
+    --tenue: #ebebf561; --ouro: #fbc501; --ouro2: #e0a800;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(1200px 500px at 50% -120px, #fbc50126, transparent 70%), var(--fundo);
+    color: var(--texto); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 16px 48px; }
+  .topo { display: flex; gap: 20px; align-items: center; }
+  .topo img { width: 88px; height: 88px; border-radius: 22px; box-shadow: 0 10px 40px #fbc50133; }
+  h1 { margin: 0; font-size: clamp(28px, 5vw, 38px); letter-spacing: -.02em; }
+  .sub { color: var(--apagado); margin: 4px 0 0; }
+  .acoes { display: flex; flex-wrap: wrap; gap: 12px; margin: 32px 0 10px; }
+  .botao {
+    display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 14px;
+    font-weight: 700; text-decoration: none; color: #1a1400; background: linear-gradient(180deg, var(--ouro), var(--ouro2));
+  }
+  .botao.vidro { color: var(--texto); background: #ffffff12; border: 1px solid var(--borda); font-weight: 600; }
+  .botao:hover { filter: brightness(1.07); }
+  .versao { color: var(--tenue); font-size: 13px; }
+  section { background: var(--cartao); border: 1px solid var(--borda); border-radius: 18px; padding: 22px; margin-top: 22px; }
+  h2 { font-size: 18px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  h2::before { content: ""; width: 4px; height: 20px; border-radius: 2px; background: var(--ouro); }
+  ol { margin: 0; padding-left: 20px; } li { margin: 6px 0; } li::marker { color: var(--ouro); font-weight: 700; }
+  .cmd { position: relative; margin: 10px 0; }
+  pre {
+    margin: 0; padding: 14px 92px 14px 14px; background: #0b0b0c; border: 1px solid var(--borda); border-radius: 12px;
+    overflow-x: auto; font: 13.5px/1.5 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; color: #f5e7b0;
+  }
+  .copiar {
+    position: absolute; top: 8px; right: 8px; border: 1px solid var(--borda); background: #ffffff14; color: var(--texto);
+    border-radius: 9px; padding: 6px 10px; font: 600 12.5px system-ui, sans-serif; cursor: pointer;
+  }
+  .nota { color: var(--apagado); font-size: 14px; }
+  a { color: var(--ouro); }
+  footer { margin-top: 30px; color: var(--tenue); font-size: 13px; text-align: center; }
+  [data-l="en"] { display: none; }
+  html[lang="en"] [data-l="pt"] { display: none; }
+  html[lang="en"] [data-l="en"] { display: revert; }
+  .idioma { position: absolute; top: 16px; right: 16px; }
+  .idioma button { background: none; border: 1px solid var(--borda); color: var(--apagado); border-radius: 8px; padding: 4px 9px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="idioma"><button id="idioma" type="button">EN</button></div>
+<main>
+  <div class="topo">
+    <img src="icone.png" alt="">
+    <div>
+      <h1>LibertyX Player</h1>
+      <p class="sub" data-l="pt">Seus vídeos e o servidor de casa, no Linux.</p>
+      <p class="sub" data-l="en">Your videos and your home server, on Linux.</p>
+    </div>
+  </div>
+
+  <div class="acoes">
+    <a class="botao" href="libertyx.flatpakref">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      <span data-l="pt">Instalar (Flatpak)</span><span data-l="en">Install (Flatpak)</span>
+    </a>
+    <a class="botao vidro" href="https://github.com/fxmx182/libertyx-player-desktop/releases/latest">
+      <span data-l="pt">.deb, .rpm e AppImage</span><span data-l="en">.deb, .rpm and AppImage</span>
+    </a>
+  </div>
+  <p class="versao"><span data-l="pt">Versão publicada:</span><span data-l="en">Published version:</span> @TAG@</p>
+
+  <section>
+    <h2><span data-l="pt">Pop!_OS, Fedora, Linux Mint</span><span data-l="en">Pop!_OS, Fedora, Linux Mint</span></h2>
+    <ol data-l="pt">
+      <li>Clique em <b>Instalar (Flatpak)</b> e abra o arquivo baixado.</li>
+      <li>A COSMIC Store, o GNOME Software ou a Central de Programas abre: clique em <b>Instalar</b>.</li>
+      <li>Pronto. As atualizações chegam pela própria loja.</li>
+    </ol>
+    <ol data-l="en">
+      <li>Click <b>Install (Flatpak)</b> and open the downloaded file.</li>
+      <li>COSMIC Store, GNOME Software or Software Manager opens: click <b>Install</b>.</li>
+      <li>Done. Updates arrive through the store.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span data-l="pt">Ubuntu</span><span data-l="en">Ubuntu</span></h2>
+    <p class="nota" data-l="pt">O Ubuntu não vem com o Flatpak. Instale uma vez, reinicie a sessão e use o botão acima:</p>
+    <p class="nota" data-l="en">Ubuntu doesn't ship Flatpak. Install it once, log in again and use the button above:</p>
+    <div class="cmd"><pre>sudo apt install flatpak gnome-software gnome-software-plugin-flatpak</pre><button class="copiar" type="button">Copiar</button></div>
+  </section>
+
+  <section>
+    <h2><span data-l="pt">Pelo terminal</span><span data-l="en">From the terminal</span></h2>
+    <div class="cmd"><pre>flatpak install --user @SITE@/libertyx.flatpakref</pre><button class="copiar" type="button">Copiar</button></div>
+    <p class="nota" data-l="pt">Para atualizar: <code>flatpak update</code>. Para abrir: <code>flatpak run io.github.fxmx182.libertyx-player-desktop</code>.</p>
+    <p class="nota" data-l="en">To update: <code>flatpak update</code>. To open: <code>flatpak run io.github.fxmx182.libertyx-player-desktop</code>.</p>
+  </section>
+
+  <footer>
+    <span data-l="pt">Pacotes assinados pela chave</span><span data-l="en">Packages signed by the key</span>
+    <a href="libertyx.gpg">LibertyX Flatpak</a> ·
+    <a href="https://fxmx182.github.io/#/player">fxmx182.github.io</a>
+  </footer>
+</main>
+<script>
+  const raiz = document.documentElement, botao = document.getElementById("idioma");
+  function usar(l) { raiz.lang = l === "en" ? "en" : "pt-BR"; botao.textContent = l === "en" ? "PT" : "EN";
+    document.querySelectorAll(".copiar").forEach(b => b.textContent = l === "en" ? "Copy" : "Copiar"); }
+  let salvo = null; try { salvo = localStorage.getItem("idioma"); } catch (e) {}
+  usar(salvo || (navigator.language || "").toLowerCase().startsWith("pt") ? (salvo || "pt") : "en");
+  botao.onclick = () => { const l = raiz.lang === "en" ? "pt" : "en"; usar(l); try { localStorage.setItem("idioma", l); } catch (e) {} };
+  document.querySelectorAll(".copiar").forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.previousElementSibling.textContent); b.textContent = "✓"; } catch (e) {} });
+</script>
+</body>
+</html>
