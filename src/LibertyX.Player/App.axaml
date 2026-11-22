@@ -174,6 +174,29 @@
     <Style Selector="Button.cartao:pointerover Border.capa">
       <Setter Property="BorderBrush" Value="{StaticResource Ouro}" />
     </Style>
+    <!-- ao passar o mouse, a capa cresce um pouco e o ▶ aparece (só nos vídeos) -->
+    <Style Selector="Button.cartao Border.capa">
+      <Setter Property="RenderTransform" Value="none" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.cartao:pointerover Border.capa">
+      <Setter Property="RenderTransform" Value="scale(1.035)" />
+    </Style>
+    <Style Selector="Border.tocar">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.16" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.cartao:pointerover Border.tocar">
+      <Setter Property="Opacity" Value="0.95" />
+    </Style>
     <Style Selector="Border.capa">
       <Setter Property="BorderThickness" Value="2" />
       <Setter Property="BorderBrush" Value="Transparent" />

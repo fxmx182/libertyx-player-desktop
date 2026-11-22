@@ -82,6 +82,14 @@ public static class Cartoes
         return b;
     }
 
+    /// <summary>O ▶ no círculo dourado que aparece no meio da capa quando o mouse passa (ver o estilo Border.tocar).</summary>
+    public static Control TocarAoPassar() => new Border
+    {
+        Classes = { "tocar" }, Width = 46, Height = 46, CornerRadius = new CornerRadius(23), Background = Ui.Pincel("Ouro"),
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+        Child = Ui.Icone(Icones.Play, 26, Ui.Pincel("SobreOuro")),
+    };
+
     /// <summary>O ✓ dourado no canto da capa: já visto, como no app do Jellyfin.</summary>
     public static Control MarcaDeVisto(double tamanho = 22) => new Border
     {

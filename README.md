@@ -109,8 +109,10 @@ O que muda no Windows:
     pastas, miniaturas e reprodução direto do servidor.
   - **WebDAV / Nextcloud**: do Nextcloud basta o endereço do servidor (o app acha
     `/remote.php/dav/files/<usuário>/`). O mpv toca a URL com a senha no cabeçalho.
-  - **Jellyfin e Emby**, o mesmo cliente do celular e da TV: a tela inicial do servidor
-    (continuar, a seguir com a capa da série, TV ao vivo, favoritos, recentes), bibliotecas com a
+  - **Jellyfin e Emby**, o mesmo cliente do celular e da TV: a tela inicial do servidor —
+    as bibliotecas no topo, em banners; um destaque grande que passa sozinho (fundo, logotipo,
+    sinopse, ▶ e "Mais informações"); e as faixas com setas (continuar, a seguir com a capa da
+    série, TV ao vivo, favoritos, recentes em cartaz), bibliotecas com a
     ordem e os filtros do servidor (nome, adicionado, lançamento, nota, aleatório; não vistos,
     favoritos, gênero) e a busca (filmes, séries, episódios). Filme ou episódio abre a **página**
     dele: fundo e logotipo, data, duração, a que horas termina, nota, ▶ ↻ ✓ ♥ ⋯ (trailer, série,

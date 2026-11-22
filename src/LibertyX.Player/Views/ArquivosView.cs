@@ -132,6 +132,7 @@ public sealed partial class ArquivosView : DockPanel
     {
         _geracao++;
         _corpo.Children.Clear();
+        _corpo.Spacing = 18;
         _voltar.IsVisible = _pilha.Count > _piso;
         _adicionar.IsVisible = _pilha.Count == 0 && Pro.Ativo;
         if (_pilha.Count == 0) { _titulo.Text = S("Arquivos"); Inicio(); return; }
