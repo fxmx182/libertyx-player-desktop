@@ -340,7 +340,7 @@ public sealed class PlayerView : Grid
         return new()
         {
             ["config"] = "no", ["terminal"] = "no", ["osc"] = "no", ["input-default-bindings"] = "no", ["input-vo-keyboard"] = "no",
-            ["vo"] = "libmpv", ["gpu-sw"] = "yes", ["hwdec"] = p.Decodificacao ? "auto-safe" : "no", ["keep-open"] = "yes", ["idle"] = "yes",
+            ["vo"] = "libmpv", ["gpu-sw"] = "yes", ["hwdec"] = p.Decodificacao ? "auto-safe" : "no", ["keep-open"] = "yes", ["keep-open-pause"] = "no", ["idle"] = "yes",
             ["hr-seek"] = "yes", ["hr-seek-framedrop"] = "no", ["sub-auto"] = "fuzzy", ["volume-max"] = "150",
             ["volume"] = p.Volume.ToString(CultureInfo.InvariantCulture), ["cache"] = "yes", ["demuxer-max-bytes"] = "150MiB",
             ["demuxer-readahead-secs"] = "20", ["alang"] = p.IdiomaAudio ?? lang, ["slang"] = p.IdiomaLegenda ?? lang,
@@ -466,6 +466,9 @@ public sealed class PlayerView : Grid
                 _cortinaAbre = true;
                 _abrindo = false;
                 Carregando(null);
+                // o botão segue o mpv de verdade: um "pause" que liga e desliga entre dois avisos não
+                // gera evento, e o botão podia mostrar tocando com o vídeo parado
+                if (_mpv.GetFlag("pause") is bool pausa) Propriedade("pause", pausa);
                 if (_atual != null) AvisoAoServidor.Comecou(_atual, _mpv.GetDouble("time-pos") ?? 0);
                 break;
             // o primeiro quadro do vídeo novo está pronto; espera ele chegar à tela antes de mostrar
@@ -545,14 +548,21 @@ public sealed class PlayerView : Grid
         }
     }
 
+    /// <summary>
+    /// O mpv não pausa sozinho no fim (keep-open-pause=no): a pausa dele chegava atrasada, já no
+    /// vídeo seguinte, que abria parado em 0:00 com o botão mostrando tocando. Quem pausa é este
+    /// método, e só quando não há o que tocar depois.
+    /// </summary>
     private void ChegouAoFim()
     {
         Encerrar(acabou: true);
-        if (_dormirNoFim) { _dormirNoFim = false; Hud(S("Bom descanso"), 2500); return; }
+        if (_dormirNoFim) { _dormirNoFim = false; Parar(); Hud(S("Bom descanso"), 2500); return; }
         if (Prefs.Atual.Repetir) return;   // o loop-file cuida
         if (Prefs.Atual.Aleatorio && _fila.Count > 1) { _indice = (_indice + 1 + _sorte.Next(_fila.Count - 1)) % _fila.Count; Abrir(_fila[_indice]); }
         else if (_indice + 1 < _fila.Count) { _indice++; Abrir(_fila[_indice]); }
-        else MostrarControles(true);
+        else { Parar(); MostrarControles(true); }
+
+        void Parar() { _mpv.SetFlag("pause", true); Propriedade("pause", true); }
     }
 
     // ───────── comandos ─────────
