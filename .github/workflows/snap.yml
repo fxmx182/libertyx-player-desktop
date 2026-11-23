@@ -33,6 +33,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -44,10 +45,17 @@ jobs:
           echo "$tag" > packaging/snap/tag.txt
           echo "release: $tag"
 
-      - uses: snapcore/action-build@v1
+      # direto no Ubuntu 24.04 do runner (é a base core24): o snapcore/action-build cria uma
+      # máquina LXD que às vezes trava 45 minutos ao nascer, ao lado do Docker do runner
+      - name: Empacotar
         id: build
-        with:
-          path: packaging/snap
+        run: |
+          sudo snap install snapcraft --classic
+          cd packaging/snap
+          sudo snapcraft pack --destructive-mode
+          snap=$(ls "$PWD"/*.snap | head -1)
+          echo "snap=$snap" >> "$GITHUB_OUTPUT"
+          ls -la "$snap"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -8,7 +8,7 @@ de quem usa Ubuntu (e de quem tem o snapd em outra distribuição). Página: htt
 1. Um commit `Linux:` publica a release do Linux (workflow `linux.yml`).
 2. Ao terminar, o `snap.yml`, no x86_64 e no ARM64 (cada um no próprio runner):
    - escreve em `tag.txt` qual é a release mais nova;
-   - empacota o snap (`snapcore/action-build`): o `snapcraft.yaml` baixa o AppImage daquela
+   - empacota o snap (`snapcraft pack --destructive-mode`, direto no Ubuntu 24.04 do runner): o `snapcraft.yaml` baixa o AppImage daquela
      release e tira dele o executável, o libmpv LGPL, os ícones e o atalho;
    - publica no canal `stable` com a chave do segredo `SNAPCRAFT_STORE_CREDENTIALS`.
 3. Quem tem o snap recebe a atualização sozinho.
