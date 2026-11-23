@@ -16,7 +16,7 @@ description: |
 
   To reach videos on USB drives and other disks, allow it once:
   snap connect libertyx-player:removable-media
-license: proprietary
+license: Proprietary
 website: https://fxmx182.github.io/#/player
 contact: https://fxmx182.github.io/#/player
 issues: https://github.com/fxmx182/libertyx-player-desktop/issues
