@@ -1,0 +1,89 @@
+name: libertyx-player
+title: LibertyX Player
+summary: Your videos and your home server, with frame-accurate seeking
+description: |
+  The LibertyX Player from Android and iPhone, on the desktop.
+
+  - A library of your video folders, with covers and "continue watching"
+  - Frame-accurate seeking: drag the video to scrub through it
+  - Subtitles and audio tracks, with downloaded subtitles side by side
+  - Network folders (SMB) played straight from your PC or NAS, without copying
+  - Jellyfin and Emby servers, with series, seasons and "next up"
+
+  O LibertyX Player do Android e do iPhone, no desktop: biblioteca das pastas de vídeo com
+  capas e "continuar assistindo", rolagem quadro a quadro arrastando o vídeo, legendas e
+  faixas de áudio, pastas da rede (SMB) e servidores Jellyfin e Emby.
+
+  To reach videos on USB drives and other disks, allow it once:
+  snap connect libertyx-player:removable-media
+license: Proprietary
+website: https://fxmx182.github.io/#/player
+contact: https://fxmx182.github.io/#/player
+issues: https://github.com/fxmx182/libertyx-player-desktop/issues
+source-code: https://github.com/fxmx182/libertyx-player-desktop
+icon: snap/gui/libertyx-player.png
+adopt-info: libertyx
+
+base: core24
+grade: stable
+confinement: strict
+platforms:
+  amd64:
+  arm64:
+
+# O snap é o AppImage da release do Linux aberto: o executável único (.NET) e o libmpv LGPL
+# próprio (Scripts/libmpv-linux.sh), que só pede do sistema o que a extensão gnome já traz (som,
+# fontes, GnuTLS, OpenGL). Cada release publica o snap pelo .github/workflows/snap.yml; o tag.txt
+# (escrito pelo CI) diz qual release; sem ele, a mais nova.
+parts:
+  libertyx:
+    plugin: nil
+    source: .
+    build-packages: [curl, ca-certificates]
+    override-pull: |
+      craftctl default
+      if [ -f tag.txt ]; then base="https://github.com/fxmx182/libertyx-player-desktop/releases/download/$(cat tag.txt)"
+      else base="https://github.com/fxmx182/libertyx-player-desktop/releases/latest/download"; fi
+      case "$CRAFT_ARCH_BUILD_FOR" in amd64) a=x86_64 ;; arm64) a=aarch64 ;; *) exit 1 ;; esac
+      curl -fsSL --retry 3 -o versao.txt "$base/versao.txt"
+      curl -fsSL --retry 3 -o LibertyX.AppImage "$base/LibertyXPlayer-$a.AppImage"
+      craftctl set version="$(sed -n 's/^versao=//p' versao.txt)"
+    override-build: |
+      # cada arquitetura compila na própria máquina: o AppImage se abre sozinho (sem FUSE)
+      chmod +x LibertyX.AppImage
+      rm -rf squashfs-root && ./LibertyX.AppImage --appimage-extract >/dev/null
+      mv squashfs-root app
+      D="$CRAFT_PART_INSTALL"
+      install -Dm755 app/usr/bin/LibertyXPlayer "$D/usr/bin/LibertyXPlayer"
+      install -Dm644 app/usr/lib/libmpv.so.2 "$D/usr/lib/libmpv.so.2"
+      install -Dm644 app/usr/share/doc/libertyx-player/LICENCAS-libmpv.txt "$D/usr/share/doc/libertyx-player/LICENCAS-libmpv.txt"
+      for s in 16 24 32 48 64 128 256 512; do
+        install -Dm644 "app/usr/share/icons/hicolor/${s}x${s}/apps/libertyx-player.png" \
+          "$D/usr/share/icons/hicolor/${s}x${s}/apps/libertyx-player.png"
+      done
+      sed -e 's|^Exec=.*|Exec=libertyx-player %U|' \
+          -e 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/512x512/apps/libertyx-player.png|' \
+          app/libertyx-player.desktop > libertyx-player.desktop
+      install -Dm644 libertyx-player.desktop "$D/usr/share/applications/libertyx-player.desktop"
+    stage-packages:
+      - libice6
+      - libsm6
+
+apps:
+  libertyx-player:
+    command: usr/bin/LibertyXPlayer
+    desktop: usr/share/applications/libertyx-player.desktop
+    common-id: io.github.fxmx182.libertyx-player
+    extensions: [gnome]
+    environment:
+      # o LibMpv procura o libmpv próprio em $APPDIR/usr/lib (o mesmo do AppImage)
+      APPDIR: $SNAP
+      # o .NET de arquivo único extrai as bibliotecas nativas uma vez, fora da pasta da revisão
+      DOTNET_BUNDLE_EXTRACT_BASE_DIR: $SNAP_USER_COMMON/.net
+    plugs:
+      - home
+      - removable-media
+      - network
+      - network-bind
+      - audio-playback
+      - screen-inhibit-control

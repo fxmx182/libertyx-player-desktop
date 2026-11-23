@@ -1,0 +1,67 @@
+name: LibertyX Player (Snap)
+
+# O LibertyX na Snap Store (a loja do Ubuntu): https://snapcraft.io/libertyx-player
+# Depois de cada release do Linux, empacota o AppImage da release como snap (packaging/snap),
+# no x86_64 e no ARM64, cada um no próprio runner, e publica no canal stable. Quem tem o snap
+# recebe a atualização sozinho.
+# A chave de publicação fica no segredo SNAPCRAFT_STORE_CREDENTIALS (snapcraft export-login);
+# sem ela, compila e guarda o .snap, mas não publica.
+on:
+  workflow_run:
+    workflows: ["LibertyX Player (Linux)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snap-store
+  cancel-in-progress: false
+
+jobs:
+  snap:
+    name: Snap (${{ matrix.arch }})
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qual release
+        run: |
+          tag=$(curl -fsSL "https://github.com/${{ github.repository }}/releases.atom" \
+            | grep -oE 'releases/tag/v[0-9.]+-[0-9]+-[0-9a-f]+' | head -1 | sed 's|releases/tag/||')
+          [ -n "$tag" ] || { echo "::error::nenhuma release do Linux"; exit 1; }
+          echo "$tag" > packaging/snap/tag.txt
+          echo "release: $tag"
+
+      - uses: snapcore/action-build@v1
+        id: build
+        with:
+          path: packaging/snap
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+          retention-days: 7
+
+      - name: Publicar na Snap Store (stable)
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "::warning::sem o segredo SNAPCRAFT_STORE_CREDENTIALS: o snap foi compilado, mas não publicado"
+            exit 0
+          fi
+          sudo snap install snapcraft --classic
+          snapcraft upload --release=stable "${{ steps.build.outputs.snap }}"

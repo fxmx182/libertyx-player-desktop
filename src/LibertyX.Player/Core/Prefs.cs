@@ -7,10 +7,15 @@ namespace LibertyX.Player.Core;
 /// %APPDATA%\LibertyX Player e %LOCALAPPDATA%\LibertyX Player\Cache.</summary>
 public static class Caminhos
 {
-    public static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    /// <summary>A pasta pessoal de verdade, onde ficam os vídeos. No Snap o $HOME é o da caixinha
+    /// (~/snap/libertyx-player/N) e a de verdade vem em $SNAP_REAL_HOME.</summary>
+    public static string Home => Environment.GetEnvironmentVariable("SNAP_REAL_HOME") is { Length: > 0 } r ? r : HomeDoApp;
+
+    /// <summary>Onde o app guarda o que é dele (config e cache): no Snap, a pasta da caixinha.</summary>
+    private static string HomeDoApp => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     private static string Xdg(string var, string padrao) =>
-        Environment.GetEnvironmentVariable(var) is { Length: > 0 } v && Path.IsPathRooted(v) ? v : Path.Combine(Home, padrao);
+        Environment.GetEnvironmentVariable(var) is { Length: > 0 } v && Path.IsPathRooted(v) ? v : Path.Combine(HomeDoApp, padrao);
 
     public static string Config => OperatingSystem.IsWindows()
         ? Dir(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LibertyX Player"))

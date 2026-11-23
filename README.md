@@ -43,9 +43,13 @@ Pop!_OS, o GNOME Software ou o Discover, que instalam e atualizam sozinhos. Leva
 LGPL sobre o FFmpeg do runtime do Flathub, compilado e assinado pelo `flatpak.yml` a cada release do
 Linux. Detalhes em `packaging/flatpak/LEIA-ME.md`.
 
+O **Snap** vai para a Snap Store (https://snapcraft.io/libertyx-player), a loja que aparece na
+busca da App Center do Ubuntu: é o AppImage da release dentro da caixinha do snap, publicado pelo
+`snap.yml` a cada release do Linux. Detalhes em `packaging/snap/LEIA-ME.md`.
+
 Na primeira vez que abre, o app pergunta se vira o **player padrão** de vídeos (o instalador do
 Linux não pergunta nada): no .deb, .rpm e AppImage ele mesmo grava a escolha no `mimeapps.list`; no
-Flatpak explica onde escolher.
+Flatpak e no Snap explica onde escolher.
 
 ## Windows e Linux no mesmo código
 

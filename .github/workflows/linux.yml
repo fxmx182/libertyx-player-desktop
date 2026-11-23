@@ -12,7 +12,7 @@ name: LibertyX Player (Linux)
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "packaging/flatpak/**", ".github/workflows/flatpak.yml", "packaging/windows/**", ".github/workflows/windows.yml", "Scripts/libmpv-windows.sh", "Scripts/instalador.py"]
+    paths-ignore: ["**.md", "packaging/flatpak/**", ".github/workflows/flatpak.yml", "packaging/snap/**", ".github/workflows/snap.yml", "packaging/windows/**", ".github/workflows/windows.yml", "Scripts/libmpv-windows.sh", "Scripts/instalador.py"]
   workflow_dispatch:
 
 concurrency:
