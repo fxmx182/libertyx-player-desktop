@@ -49,7 +49,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $base = "https://github.com/${{ github.repository }}/releases/download/windows-latest"
-          $kv = @{}; (Invoke-WebRequest "$base/versao.txt").Content -split "`n" | ForEach-Object { if ($_ -match '^(\w+)=(.*)$') { $kv[$matches[1]] = $matches[2].Trim() } }
+          # baixado para arquivo: o GitHub serve como octet-stream e o .Content viria em bytes
+          Invoke-WebRequest "$base/versao.txt" -OutFile versao.txt
+          $kv = @{}; Get-Content versao.txt -Encoding utf8 | ForEach-Object { if ($_ -match '^(\w+)=(.*)$') { $kv[$matches[1]] = $matches[2].Trim() } }
           $ver = "$($kv['versao']).0"
           if ($ver -notmatch '^\d+\.\d+\.\d+\.0$') { Write-Output "::error::versão da release ilegível: $ver"; exit 1 }
           Write-Output "versao=$ver" >> $env:GITHUB_OUTPUT
