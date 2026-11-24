@@ -39,6 +39,8 @@ public static class Autoteste
         }
         // informativos (não reprovam: dependem da rede e da placa de vídeo da máquina do CI)
         if (OperatingSystem.IsWindows()) Ok("textura compartilhada do Direct3D: " + (Win.TexturaCompartilhada() ? "sim (vídeo por OpenGL)" : "não (vídeo por software)"));
+        // o CI do MSIX confere esta linha: dentro do pacote o app tem de se ver como da loja (sem atualização própria)
+        if (OperatingSystem.IsWindows()) Ok("pacote da Microsoft Store (MSIX): " + (PlayerPadrao.Msix ? "sim" : "não"));
         var pub = Atualizacao.Conferir().GetAwaiter().GetResult();
         Ok(pub != null ? $"versão publicada {pub.Versao} ({(pub.Arquivo.Length > 0 ? pub.Arquivo : "página")}), este build 1.0.{Atualizacao.BuildAtual}" : "versão publicada não lida (sem rede?)");
         if (Chave.Conferir("LXP1-000000-000000") is Chave.Resultado.Recusada) Ok("chave falsa recusada"); else Falha("chave falsa aceita");

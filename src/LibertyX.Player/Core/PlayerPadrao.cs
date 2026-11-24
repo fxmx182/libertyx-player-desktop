@@ -18,7 +18,20 @@ public static class PlayerPadrao
 
     public static bool Flatpak => Environment.GetEnvironmentVariable("FLATPAK_ID") is { Length: > 0 };
     public static bool Snap => Environment.GetEnvironmentVariable("SNAP_NAME") is { Length: > 0 };
-    public static bool DeLoja => Flatpak || Snap;
+    /// <summary>Windows instalado pela Microsoft Store (pacote MSIX): quem atualiza é a loja, e o "Abrir
+    /// com" vem do manifesto do pacote.</summary>
+    public static bool Msix => _msix.Value;
+    public static bool DeLoja => Flatpak || Snap || Msix;
+
+    private static readonly Lazy<bool> _msix = new(() =>
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        try { int n = 0; return GetCurrentPackageFullName(ref n, null) != 15700; }   // 15700 = APPMODEL_ERROR_NO_PACKAGE
+        catch { return false; }
+    });
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetCurrentPackageFullName(ref int length, char[]? packageFullName);
 
     /// <summary>O nome do .desktop deste jeito de instalar; null quando não há atalho (o .tar.gz solto)
     /// — sem atalho o sistema não tem o que chamar de padrão.</summary>

@@ -1,0 +1,159 @@
+name: LibertyX Player (Microsoft Store)
+
+# O LibertyX na Microsoft Store. Depois de cada release do Windows, pega o .zip portátil da release
+# "windows-latest" (x64 e ARM64: o executável e o libmpv LGPL), monta o pacote MSIX de cada
+# arquitetura com o manifesto de packaging/msix e junta os dois num .msixbundle — o arquivo que vai
+# para o Partner Center (a loja assina; o pacote sai sem assinatura).
+#
+# Antes de guardar, prova num Windows de verdade (x64 e ARM64): assina uma cópia com um certificado
+# de teste, instala, roda o autoteste DENTRO do pacote (pelo alias libertyx-player.exe), confere que
+# o app se vê como da loja e que o "Abrir com" dos vídeos ficou registrado, e desinstala.
+#
+# A identidade vem do Partner Center (LibertyX Player › Identidade do produto; Store ID 9N4QCW9D95JV,
+# https://apps.microsoft.com/detail/9N4QCW9D95JV). Ela nunca muda: é o que faz a loja reconhecer o app.
+on:
+  workflow_run:
+    workflows: ["LibertyX Player (Windows)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: msix
+  cancel-in-progress: false
+
+env:
+  NOME: GermanoMauricio.LibertyXPlayer
+  PUBLISHER: CN=CC0ECBAB-5F0C-491F-9251-8A5AC3FBD818
+  PUBLISHER_NOME: GermanoMauricio
+
+jobs:
+  pacote:
+    name: Montar o .msixbundle
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    outputs:
+      versao: ${{ steps.monta.outputs.versao }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar
+        id: monta
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = "https://github.com/${{ github.repository }}/releases/download/windows-latest"
+          $kv = @{}; (Invoke-WebRequest "$base/versao.txt").Content -split "`n" | ForEach-Object { if ($_ -match '^(\w+)=(.*)$') { $kv[$matches[1]] = $matches[2].Trim() } }
+          $ver = "$($kv['versao']).0"
+          if ($ver -notmatch '^\d+\.\d+\.\d+\.0$') { Write-Output "::error::versão da release ilegível: $ver"; exit 1 }
+          Write-Output "versao=$ver" >> $env:GITHUB_OUTPUT
+          Write-Output "release windows-latest: $ver"
+
+          $kit = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" -Directory | Sort-Object Name | Select-Object -Last 1
+          $makeappx = Join-Path $kit.FullName makeappx.exe
+          $makepri = Join-Path $kit.FullName makepri.exe
+          Write-Output "SDK: $($kit.FullName)"
+
+          New-Item -ItemType Directory -Force out | Out-Null
+          foreach ($arq in 'x64', 'arm64') {
+            $d = "pkg\$arq"
+            New-Item -ItemType Directory -Force $d | Out-Null
+            Invoke-WebRequest "$base/LibertyXPlayer-windows-$arq.zip" -OutFile "$arq.zip"
+            Expand-Archive "$arq.zip" -DestinationPath $d
+            if (-not (Test-Path "$d\LibertyXPlayer.exe") -or -not (Test-Path "$d\libmpv-2.dll")) { Write-Output "::error::o zip $arq não tem o executável e o libmpv"; exit 1 }
+            Copy-Item -Recurse packaging\msix\Assets "$d\Assets"
+            (Get-Content packaging\msix\AppxManifest.xml -Raw).
+              Replace('$NOME$', $env:NOME).Replace('$PUBLISHER_NOME$', $env:PUBLISHER_NOME).Replace('$PUBLISHER$', $env:PUBLISHER).
+              Replace('$VERSAO$', $ver).Replace('$ARQ$', $arq) | Set-Content "$d\AppxManifest.xml" -Encoding utf8
+            # resources.pri: é ele que faz a barra de tarefas usar os ícones sem fundo (altform-unplated)
+            & $makepri createconfig /cf "pkg\priconfig-$arq.xml" /dq en-US /o | Out-Null
+            & $makepri new /pr $d /cf "pkg\priconfig-$arq.xml" /mn "$d\AppxManifest.xml" /of "$d\resources.pri" /o
+            if ($LASTEXITCODE) { Write-Output "::error::makepri falhou ($arq)"; exit 1 }
+            & $makeappx pack /o /d $d /p "bundle\LibertyXPlayer-$arq.msix"
+            if ($LASTEXITCODE) { Write-Output "::error::makeappx pack falhou ($arq)"; exit 1 }
+          }
+          & $makeappx bundle /o /bv $ver /d bundle /p "out\LibertyXPlayer.msixbundle"
+          if ($LASTEXITCODE) { Write-Output "::error::makeappx bundle falhou"; exit 1 }
+          Get-ChildItem bundle, out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msixbundle
+          path: out/LibertyXPlayer.msixbundle
+          retention-days: 30
+
+  teste:
+    name: Instalar e testar (${{ matrix.arch }})
+    needs: pacote
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging/msix
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: msixbundle
+
+      # a loja assina o pacote de verdade; para instalar aqui, uma cópia assinada com um certificado de teste
+      - name: Assinar uma cópia (certificado de teste)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $c = New-SelfSignedCertificate -Type Custom -Subject $env:PUBLISHER -KeyUsage DigitalSignature -FriendlyName 'LibertyX teste' `
+            -CertStoreLocation Cert:\CurrentUser\My -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $pfx = "$env:RUNNER_TEMP\teste.pfx"; $senha = ConvertTo-SecureString -String 'teste' -Force -AsPlainText
+          Export-PfxCertificate -Cert $c -FilePath $pfx -Password $senha | Out-Null
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\LocalMachine\TrustedPeople -Password $senha | Out-Null
+          $kit = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" -Directory | Sort-Object Name | Select-Object -Last 1
+          Copy-Item LibertyXPlayer.msixbundle assinado.msixbundle
+          & (Join-Path $kit.FullName signtool.exe) sign /fd SHA256 /f $pfx /p teste assinado.msixbundle
+          if ($LASTEXITCODE) { Write-Output "::error::signtool falhou"; exit 1 }
+
+      - name: Instalar, abrir dentro do pacote e desinstalar
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-AppxPackage -Path assinado.msixbundle
+          $p = Get-AppxPackage -Name $env:NOME
+          if (-not $p) { Write-Output "::error title=MSIX ${{ matrix.arch }}::o pacote não instalou"; exit 1 }
+          Write-Output "::notice title=MSIX ${{ matrix.arch }}::instalado $($p.PackageFullName)"
+          if ($p.Architecture -notlike '*${{ matrix.arch }}*') { Write-Output "::error title=MSIX ${{ matrix.arch }}::instalou a arquitetura errada ($($p.Architecture))" ; exit 1 }
+
+          # o alias roda o app COM a identidade do pacote (rodar o .exe da pasta WindowsApps direto, não)
+          $alias = "$env:LOCALAPPDATA\Microsoft\WindowsApps\libertyx-player.exe"
+          if (-not (Test-Path $alias)) { Write-Output "::error title=MSIX ${{ matrix.arch }}::o alias libertyx-player.exe não apareceu"; exit 1 }
+          $rel = "$env:RUNNER_TEMP\msix.txt"
+          $video = (Resolve-Path packaging\msix\teste.mp4).Path
+          $t = Start-Process $alias -ArgumentList '--autoteste', $rel, $video -Wait -PassThru
+          if (-not (Test-Path $rel)) { Write-Output "::error title=MSIX ${{ matrix.arch }}::o app do pacote não gerou relatório (código $($t.ExitCode))"; exit 1 }
+          Get-Content $rel
+          $ruim = $false
+          foreach ($f in (Get-Content $rel | Where-Object { $_ -like 'FALHA*' })) { Write-Output "::error title=Autoteste MSIX ${{ matrix.arch }}::$f" ; $ruim = $true }
+          if (-not (Select-String -Path $rel -Pattern 'MSIX\): sim' -Quiet)) { Write-Output "::error title=MSIX ${{ matrix.arch }}::dentro do pacote o app não se viu como da loja"; $ruim = $true }
+
+          # o "Abrir com" do manifesto: o Windows registra um ProgID AppX… nas extensões de vídeo
+          $progs = (Get-Item 'Registry::HKEY_CURRENT_USER\Software\Classes\.mkv\OpenWithProgids' -ErrorAction SilentlyContinue).Property | Where-Object { $_ -like 'AppX*' }
+          if (-not $progs) { Write-Output "::error title=MSIX ${{ matrix.arch }}::o .mkv não ganhou o Abrir com do pacote"; $ruim = $true }
+          else { Write-Output "::notice title=MSIX ${{ matrix.arch }}::Abrir com do .mkv: $($progs -join ', ')" }
+
+          Remove-AppxPackage -Package $p.PackageFullName
+          if (Get-AppxPackage -Name $env:NOME) { Write-Output "::error title=MSIX ${{ matrix.arch }}::não desinstalou"; $ruim = $true }
+          Write-Output "::notice title=MSIX ${{ matrix.arch }}::$(Get-Content $rel | Select-Object -Last 1), desinstalado"
+          if ($ruim) { exit 1 }
