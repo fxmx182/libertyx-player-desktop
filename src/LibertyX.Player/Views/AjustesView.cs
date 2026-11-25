@@ -18,11 +18,14 @@ public sealed class AjustesView : ScrollViewer
     private readonly Action _adicionarPasta;
     private readonly Action _pastasMudaram;
     private readonly Action<Pro.Recurso?> _mostrarPro;
+    private readonly Func<List<PastaDeVideos>> _pastasAchadas;
     private readonly StackPanel _corpo = new() { Spacing = 18, Margin = new Thickness(28, 18, 28, 28), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
 
-    public AjustesView(Action reconstruir, Action adicionarPasta, Action pastasMudaram, Action<Pro.Recurso?> mostrarPro)
+    public AjustesView(Action reconstruir, Action adicionarPasta, Action pastasMudaram, Action<Pro.Recurso?> mostrarPro,
+        Func<List<PastaDeVideos>> pastasAchadas)
     {
         _reconstruir = reconstruir; _adicionarPasta = adicionarPasta; _pastasMudaram = pastasMudaram; _mostrarPro = mostrarPro;
+        _pastasAchadas = pastasAchadas;
         Content = _corpo;
         Pro.Mudou += () => Avalonia.Threading.Dispatcher.UIThread.Post(Montar);
     }
@@ -274,7 +277,8 @@ public sealed class AjustesView : ScrollViewer
         var botoes = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
         var acrescentar = Ui.Botao(S("Acrescentar pasta"), Icones.Adicionar, "vidro", _adicionarPasta);
         acrescentar.Margin = new Thickness(0, 0, 10, 8);
-        var excluir = Ui.Botao(S("Deixar uma pasta fora da busca"), Icones.Fechar, "vidro", ExcluirPasta);
+        Button excluir = null!;
+        excluir = Ui.Botao(S("Deixar uma pasta fora da busca"), Icones.Fechar, "vidro", () => MenuExcluir(excluir));
         excluir.Margin = new Thickness(0, 0, 10, 8);
         botoes.Children.Add(acrescentar); botoes.Children.Add(excluir);
         p.Children.Add(botoes);
@@ -306,10 +310,11 @@ public sealed class AjustesView : ScrollViewer
         return g;
     }
 
-    private async Task<string?> EscolherPasta(string titulo)
+    private async Task<string?> EscolherPasta(string titulo, string? comecarEm = null)
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } sp) return null;
-        var r = await sp.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = titulo, AllowMultiple = false });
+        var inicio = comecarEm != null && Directory.Exists(comecarEm) ? await sp.TryGetFolderFromPathAsync(comecarEm) : null;
+        var r = await sp.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = titulo, AllowMultiple = false, SuggestedStartLocation = inicio });
         return r.Select(x => x.TryGetLocalPath()).OfType<string>().FirstOrDefault() is { } f ? Biblioteca.Normalizar(f) : null;
     }
 
@@ -324,11 +329,54 @@ public sealed class AjustesView : ScrollViewer
         pref.Salvar(); Montar(); _pastasMudaram();
     }
 
-    private async void ExcluirPasta()
+    /// <summary>
+    /// "Deixar uma pasta fora da busca" mostra as pastas em que a biblioteca achou vídeos, para tirar
+    /// uma com um clique. O seletor do sistema (que diz "Abrir" e começa na pasta pessoal) fica só
+    /// para uma pasta que não está na lista, e já começa dentro de onde o app procura.
+    /// </summary>
+    private void MenuExcluir(Control botao)
     {
-        if (await EscolherPasta(S("Deixar uma pasta fora da busca")) is not { } pasta) return;
+        var achadas = _pastasAchadas().OrderBy(p => p.Caminho, Natural.Comparador).ToList();
+        if (achadas.Count == 0) { ExcluirOutra(); return; }
+        var menu = new MenuFlyout();
+        menu.Items.Add(new MenuItem { Header = S("Escolha a pasta que sai da busca:"), IsEnabled = false });
+        foreach (var p in achadas)
+        {
+            var onde = p.Caminho.Replace(Caminhos.Home, "~");
+            var cabeca = Ui.Pilha(1, Orientation.Vertical,
+                Ui.Linha(p.Nome + "  ·  " + P(p.Videos.Count, "{0} vídeo", "{0} vídeos"), 14, FontWeight.SemiBold),
+                Ui.Linha(onde, 12, FontWeight.Normal, "tenue"));
+            var item = new MenuItem { Header = cabeca };
+            ToolTip.SetTip(item, p.Caminho);
+            var caminho = p.Caminho;
+            item.Click += (_, _) => Excluir(caminho);
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var outra = new MenuItem { Header = S("Outra pasta…") };
+        outra.Click += (_, _) => ExcluirOutra();
+        menu.Items.Add(outra);
+        menu.ShowAt(botao);
+    }
+
+    private async void ExcluirOutra()
+    {
+        if (await EscolherPasta(S("Deixar uma pasta fora da busca"), Biblioteca.Raizes().FirstOrDefault()) is { } pasta) Excluir(pasta);
+    }
+
+    private void Excluir(string pasta)
+    {
         var pref = Prefs.Atual;
-        if (!pref.PastasExcluidas.Any(e => Biblioteca.Igual(e, pasta))) pref.PastasExcluidas.Add(pasta);
+        pasta = Biblioteca.Normalizar(pasta);
+        // a pasta escolhida pode ser um lugar inteiro, e não algo dentro dele: a acrescentada sai da
+        // biblioteca (como na lixeira) e a automática é desligada (como na chave), para não ficar
+        // em duas listas ao mesmo tempo
+        if (pref.Pastas.RemoveAll(p => Biblioteca.Igual(p, pasta)) > 0) { }
+        else if (Biblioteca.Automaticas().Any(a => Biblioteca.Igual(a, pasta)))
+        {
+            if (!Biblioteca.Desligada(pasta)) pref.RaizesDesligadas.Add(pasta);
+        }
+        else if (!pref.PastasExcluidas.Any(e => Biblioteca.Igual(e, pasta))) pref.PastasExcluidas.Add(pasta);
         pref.Salvar(); Montar(); _pastasMudaram();
     }
 

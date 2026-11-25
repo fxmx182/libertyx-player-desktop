@@ -79,7 +79,8 @@ public sealed class MainWindow : Window
         _arquivos.Abriu += aba => { if (Abas.Escolhidas().Contains(aba)) Ir(aba); else Ir("arquivos", raiz: false); };
         _procurar = new ProcurarView(Tocar, () => _biblioteca.Pastas, (c, i) => { Ir("arquivos"); _arquivos.AbrirItem(c, i); });
         _biblioteca.Varreu += () => { if (_aba == "arquivos") _arquivos.PastasMudaram(); };
-        _ajustes = new AjustesView(Construir, AdicionarPasta, () => _biblioteca.Varrer(recomecar: true), r => ProDialogo.Mostrar(r));
+        _ajustes = new AjustesView(Construir, AdicionarPasta, () => _biblioteca.Varrer(recomecar: true), r => ProDialogo.Mostrar(r),
+            () => _biblioteca.Pastas);
         Abas.Mudou -= MontarAbas; Abas.Mudou += MontarAbas;
         Rede.Contas.Mudou -= ServidoresMudaram; Rede.Contas.Mudou += ServidoresMudaram;
         Rede.Servidores.Mudou -= ServidoresMudaram; Rede.Servidores.Mudou += ServidoresMudaram;
